@@ -29,9 +29,22 @@ AUTO_MODE_TEMP_SPREAD = 2.0
 
 async def async_setup_intents(hass: HomeAssistant) -> None:
     """Set up the custom climate intents."""
+    # Check what's currently registered
+    current_handlers = intent.async_get(hass)
+    climate_handlers = [h for h in current_handlers if "climate" in h.intent_type.lower() or "temperature" in h.intent_type.lower()]
+    _LOGGER.info("Before registration - Climate-related intent handlers: %s",
+                 [f"{h.intent_type} ({type(h).__module__}.{type(h).__name__})" for h in climate_handlers])
+
     # Register our custom intent handler, which will override the built-in one
-    intent.async_register(hass, SetTemperatureIntent())
-    _LOGGER.info("Registered custom climate intent handler with auto mode support")
+    custom_handler = SetTemperatureIntent()
+    intent.async_register(hass, custom_handler)
+
+    # Check again after registration
+    current_handlers = intent.async_get(hass)
+    climate_handlers = [h for h in current_handlers if "climate" in h.intent_type.lower() or "temperature" in h.intent_type.lower()]
+    _LOGGER.info("After registration - Climate-related intent handlers: %s",
+                 [f"{h.intent_type} ({type(h).__module__}.{type(h).__name__})" for h in climate_handlers])
+    _LOGGER.info("Custom climate intent handler registered with intent_type=%s", custom_handler.intent_type)
 
 
 class SetTemperatureIntent(intent.IntentHandler):
@@ -57,6 +70,7 @@ class SetTemperatureIntent(intent.IntentHandler):
 
     async def async_handle(self, intent_obj: intent.Intent) -> intent.IntentResponse:
         """Handle the intent."""
+        _LOGGER.info("CUSTOM climate intent handler called with slots: %s", intent_obj.slots)
         hass = intent_obj.hass
         slots = self.async_validate_slots(intent_obj.slots)
 

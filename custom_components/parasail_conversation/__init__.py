@@ -20,8 +20,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = entry.data
 
-    # Register custom climate intent handler to support auto mode
+    # Register custom climate intent handler to override the built-in one
+    # This must happen BEFORE we set up platforms
     await climate_intent.async_setup_intents(hass)
+    _LOGGER.info("Registered custom climate intent handler")
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(update_listener))
