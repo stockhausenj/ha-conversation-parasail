@@ -331,21 +331,33 @@ def _build_messages_from_chat_log(
         # Add explicit override instruction
         override_prompt = f"""{custom_prompt}
 
-===CRITICAL OVERRIDE===
-You MUST answer general knowledge questions directly.
-When asked about capitals, geography, math, facts, weather, time, or any general topic:
-- Answer immediately with the information requested
-- Do NOT say you need more information
-- Do NOT refuse to answer
-- Do NOT only focus on home automation
+===CRITICAL INSTRUCTIONS===
 
-Examples of questions you MUST answer:
-- "What is the capital of New York?" → Answer: "Albany"
-- "What is 2+2?" → Answer: "4"
-- "What is the temperature downstairs?" → Use the GetLiveContext tool to check sensor states
+GENERAL QUESTIONS:
+- Answer general knowledge questions (capitals, math, facts) directly
+- Do NOT say you need more information for general topics
+- You have full access to your training knowledge
 
-You are a general-purpose assistant that ALSO controls home automation.
-===END OVERRIDE==="""
+DEVICE CONTROL - YOU MUST USE TOOLS:
+When users request device control, YOU MUST call the appropriate tool:
+
+1. Turn on/off: Use HassTurnOn or HassTurnOff
+   - "Turn on living room light" → Call HassTurnOn with {{"area": "living room", "domain": "light"}}
+
+2. Set brightness/color: Use HassLightSet
+   - "Set living room light to 50%" → Call HassLightSet with {{"area": "living room", "brightness": 50}}
+   - "Make bedroom light blue" → Call HassLightSet with {{"area": "bedroom", "color": "blue"}}
+
+3. Check current states: Use GetLiveContext
+   - "What's the temperature?" → Call GetLiveContext
+
+4. Climate control: Use HassClimateSetTemperature
+5. Media control: Use HassMediaPause, HassMediaUnpause, etc.
+
+DO NOT respond with "I need more information" for device control - just call the tool with available info!
+If you're unsure of exact device name, use area + domain.
+
+===END INSTRUCTIONS==="""
         system_parts.append(override_prompt)
 
     if system_parts:
