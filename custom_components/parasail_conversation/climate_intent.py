@@ -38,9 +38,15 @@ class SetTemperatureIntent(intent.IntentHandler):
     """Handle SetTemperature intents with auto mode support."""
 
     intent_type = INTENT_SET_TEMPERATURE
-    description = "Sets the target temperature of a climate device or entity"
+    description = (
+        "Sets the target temperature of a climate device or entity. "
+        "For auto mode thermostats, use target_temp_low for heating and target_temp_high for cooling. "
+        "For single-mode thermostats, use temperature."
+    )
     slot_schema = {
-        vol.Required("temperature"): vol.Coerce(float),
+        vol.Optional("temperature"): vol.Coerce(float),
+        vol.Optional("target_temp_low"): vol.Coerce(float),
+        vol.Optional("target_temp_high"): vol.Coerce(float),
         vol.Optional("area"): intent.non_empty_string,
         vol.Optional("name"): intent.non_empty_string,
         vol.Optional("floor"): intent.non_empty_string,
@@ -54,7 +60,14 @@ class SetTemperatureIntent(intent.IntentHandler):
         hass = intent_obj.hass
         slots = self.async_validate_slots(intent_obj.slots)
 
-        temperature: float = slots["temperature"]["value"]
+        # Extract temperature parameters
+        temperature: float | None = slots.get("temperature", {}).get("value")
+        target_temp_low: float | None = slots.get("target_temp_low", {}).get("value")
+        target_temp_high: float | None = slots.get("target_temp_high", {}).get("value")
+
+        # Validate we have at least one temperature parameter
+        if not any([temperature, target_temp_low, target_temp_high]):
+            raise vol.error.MultipleInvalid("Must provide at least one temperature parameter")
 
         name: str | None = None
         if "name" in slots:
@@ -96,8 +109,19 @@ class SetTemperatureIntent(intent.IntentHandler):
         current_hvac_mode = climate_state.state
         service_data = {}
 
-        if current_hvac_mode == HVACMode.HEAT_COOL:
-            # In auto mode, we need to set both low and high temps
+        # Priority: explicit low/high temps, then single temp with auto-mode handling
+        if target_temp_low is not None and target_temp_high is not None:
+            # User explicitly provided both temps (for auto mode)
+            service_data[ATTR_TARGET_TEMP_LOW] = target_temp_low
+            service_data[ATTR_TARGET_TEMP_HIGH] = target_temp_high
+            _LOGGER.info(
+                "Setting explicit temp range for %s: low=%s, high=%s",
+                climate_state.entity_id,
+                target_temp_low,
+                target_temp_high,
+            )
+        elif temperature is not None and current_hvac_mode == HVACMode.HEAT_COOL:
+            # Single temp provided but thermostat is in auto mode
             # Set them with a reasonable spread around the target
             service_data[ATTR_TARGET_TEMP_LOW] = temperature - (AUTO_MODE_TEMP_SPREAD / 2)
             service_data[ATTR_TARGET_TEMP_HIGH] = temperature + (AUTO_MODE_TEMP_SPREAD / 2)
@@ -108,7 +132,7 @@ class SetTemperatureIntent(intent.IntentHandler):
                 service_data[ATTR_TARGET_TEMP_HIGH],
                 temperature,
             )
-        else:
+        elif temperature is not None:
             # Normal mode (heat, cool, etc.) - just set single temperature
             service_data[ATTR_TEMPERATURE] = temperature
             _LOGGER.info(
@@ -116,6 +140,10 @@ class SetTemperatureIntent(intent.IntentHandler):
                 climate_state.entity_id,
                 current_hvac_mode,
                 temperature,
+            )
+        else:
+            raise vol.error.MultipleInvalid(
+                "Must provide both target_temp_low and target_temp_high together, or provide temperature"
             )
 
         await hass.services.async_call(

@@ -369,6 +369,11 @@ When users request device control, YOU MUST call the appropriate tool:
    GetLiveContext returns CURRENT sensor values and device states - use it for ANY status query!
 
 4. Climate control: Use HassClimateSetTemperature
+   - "Set thermostat to 72" → Call HassClimateSetTemperature with {{"temperature": 72, "area": "..."}}
+   - "Set heating to 68 and cooling to 73" → Call HassClimateSetTemperature with {{"target_temp_low": 68, "target_temp_high": 73, "area": "..."}}
+   IMPORTANT: When user specifies BOTH heating and cooling temps, use target_temp_low and target_temp_high in ONE call!
+   DO NOT make two separate calls - combine them into a single call with both parameters.
+
 5. Media control: Use HassMediaPause, HassMediaUnpause, etc.
 
 CRITICAL: When asked about current states (temperature, status, etc.), you MUST call GetLiveContext!
