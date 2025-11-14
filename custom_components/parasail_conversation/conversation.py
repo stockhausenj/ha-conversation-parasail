@@ -37,6 +37,7 @@ from .const import (
     DOMAIN,
     PARASAIL_API_BASE,
 )
+from .utils import fix_llm_tool_args
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -241,7 +242,7 @@ class ParasailConversationEntity(ConversationEntity):
                         _LOGGER.debug("Raw parsed tool args: %s", function_args)
 
                         # Fix LLM sending JSON arrays as strings (e.g., '["item"]' instead of "item" or ["item"])
-                        function_args = _fix_llm_tool_args(function_args)
+                        function_args = fix_llm_tool_args(function_args)
                         _LOGGER.info("Cleaned tool args: %s", function_args)
 
                         # Check if LLM API is available
@@ -411,44 +412,6 @@ If you're unsure of exact device name, use area + domain.
     })
 
     return messages
-
-
-def _fix_llm_tool_args(args: dict[str, Any]) -> dict[str, Any]:
-    """Fix common LLM mistakes in tool arguments.
-
-    LLMs sometimes send JSON arrays as strings, e.g.:
-    - '["Family Room"]' instead of "Family Room" or ["Family Room"]
-    - Trailing spaces in names
-    """
-    fixed_args = {}
-
-    for key, value in args.items():
-        if isinstance(value, str):
-            # Check if it's a JSON array string
-            if value.startswith('[') and value.endswith(']'):
-                try:
-                    # Parse the JSON array string
-                    parsed = json.loads(value)
-                    if isinstance(parsed, list):
-                        # If single item, unwrap it to a string
-                        if len(parsed) == 1:
-                            fixed_args[key] = parsed[0].strip() if isinstance(parsed[0], str) else parsed[0]
-                        else:
-                            # Multiple items - keep as array but strip strings
-                            fixed_args[key] = [item.strip() if isinstance(item, str) else item for item in parsed]
-                    else:
-                        fixed_args[key] = value
-                except (json.JSONDecodeError, ValueError):
-                    # Not valid JSON, keep original
-                    fixed_args[key] = value
-            else:
-                # Regular string, just strip whitespace
-                fixed_args[key] = value.strip()
-        else:
-            # Not a string, keep as-is
-            fixed_args[key] = value
-
-    return fixed_args
 
 
 def _convert_tools_to_openai_format(tools: list[llm.Tool]) -> list[dict[str, Any]]:

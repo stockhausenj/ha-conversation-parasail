@@ -1,0 +1,7 @@
+# Testing requirements
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-homeassistant-custom-component>=0.13.0
+
+# Component dependencies
+openai>=1.40.0

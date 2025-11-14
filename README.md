@@ -64,6 +64,26 @@ You can update your configuration at any time:
 3. Click "Configure"
 4. Update your settings
 
+## Development
+
+### Testing
+
+This project includes a comprehensive test suite. To run the tests:
+
+```bash
+# Create a virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install test dependencies
+pip install -r requirements_test.txt
+
+# Run tests
+pytest
+```
+
+See `tests/README.md` for more detailed testing documentation.
+
 ## License
 
 This project is licensed under the MIT License.
