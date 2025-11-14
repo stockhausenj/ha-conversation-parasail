@@ -82,23 +82,21 @@ class ParasailConversationEntity(ConversationEntity):
         custom_prompt = options.get(CONF_PROMPT, DEFAULT_PROMPT)
 
         # Provide LLM data to chat log (this loads tools and context)
-        try:
-            await chat_log.async_provide_llm_data(
-                user_input.as_llm_context(DOMAIN),
-                llm_api_id if llm_api_id else None,
-                custom_prompt,
-                user_input.extra_system_prompt,
-            )
-        except Exception as err:
-            _LOGGER.error("Error providing LLM data: %s", err)
-            intent_response = intent.IntentResponse(language=user_input.language)
-            intent_response.async_set_speech(
-                f"Sorry, I couldn't initialize device control: {str(err)}"
-            )
-            return conversation.ConversationResult(
-                response=intent_response,
-                conversation_id=user_input.conversation_id,
-            )
+        # Only if LLM API is configured
+        if llm_api_id:
+            try:
+                await chat_log.async_provide_llm_data(
+                    user_input.as_llm_context(DOMAIN),
+                    llm_api_id,
+                    custom_prompt,
+                    user_input.extra_system_prompt,
+                )
+                _LOGGER.info("LLM data provided with API: %s", llm_api_id)
+            except Exception as err:
+                _LOGGER.error("Error providing LLM data: %s", err, exc_info=True)
+                # Continue without tools rather than failing
+        else:
+            _LOGGER.info("No LLM API configured, running without device control tools")
 
         # Create OpenAI client
         client = OpenAI(
@@ -109,15 +107,22 @@ class ParasailConversationEntity(ConversationEntity):
         # Convert tools to OpenAI format
         tools = None
         if chat_log.llm_api and chat_log.llm_api.tools:
-            tools = _convert_tools_to_openai_format(chat_log.llm_api.tools)
-            _LOGGER.debug("Loaded %d tools for device control", len(tools))
+            try:
+                tools = _convert_tools_to_openai_format(chat_log.llm_api.tools)
+                _LOGGER.info("Loaded %d tools for device control", len(tools))
+                # Log first tool as sample
+                if tools:
+                    _LOGGER.debug("Sample tool: %s", json.dumps(tools[0], indent=2))
+            except Exception as tool_err:
+                _LOGGER.error("Error converting tools: %s", tool_err, exc_info=True)
 
         # Build messages from chat log
         messages = _build_messages_from_chat_log(chat_log)
 
         # Log the request for debugging
-        _LOGGER.debug("Sending %d messages to Parasail", len(messages))
-        _LOGGER.debug("Messages: %s", messages)
+        _LOGGER.info("Sending %d messages to Parasail", len(messages))
+        for idx, msg in enumerate(messages):
+            _LOGGER.debug("Message %d: %s", idx, json.dumps(msg, indent=2)[:500])
 
         # Tool calling loop
         iteration = 0
@@ -138,9 +143,18 @@ class ParasailConversationEntity(ConversationEntity):
                     completion_args["tools"] = tools
                     completion_args["tool_choice"] = "auto"
 
-                response = await self.hass.async_add_executor_job(
-                    lambda: client.chat.completions.create(**completion_args)
-                )
+                _LOGGER.debug("Calling Parasail API with args: model=%s, num_messages=%d, num_tools=%s",
+                             model, len(messages), len(tools) if tools else 0)
+
+                try:
+                    response = await self.hass.async_add_executor_job(
+                        lambda: client.chat.completions.create(**completion_args)
+                    )
+                except Exception as api_err:
+                    _LOGGER.error("Parasail API error: %s", api_err, exc_info=True)
+                    _LOGGER.error("Request had %d messages, %d tools",
+                                 len(messages), len(tools) if tools else 0)
+                    raise
 
                 assistant_message = response.choices[0].message
 
@@ -250,9 +264,11 @@ def _build_messages_from_chat_log(chat_log: ChatLog) -> list[ChatCompletionMessa
     system_parts = []
 
     if chat_log.llm_api and hasattr(chat_log.llm_api, "api_prompt"):
-        system_parts.append(chat_log.llm_api.api_prompt)
+        api_prompt = chat_log.llm_api.api_prompt
+        if api_prompt:
+            system_parts.append(api_prompt)
 
-    if chat_log.extra_system_prompt:
+    if hasattr(chat_log, "extra_system_prompt") and chat_log.extra_system_prompt:
         system_parts.append(chat_log.extra_system_prompt)
 
     if system_parts:
@@ -264,12 +280,16 @@ def _build_messages_from_chat_log(chat_log: ChatLog) -> list[ChatCompletionMessa
     # Add conversation messages
     if hasattr(chat_log, "messages"):
         for msg in chat_log.messages:
-            if hasattr(msg, "role") and hasattr(msg, "content"):
+            if hasattr(msg, "role") and hasattr(msg, "content") and msg.content:
                 if msg.role in ("user", "assistant"):
                     messages.append({
                         "role": msg.role,
                         "content": msg.content,
                     })
+
+    # Ensure we have at least one message (the current user input should be there)
+    if not messages or not any(m.get("role") == "user" for m in messages):
+        _LOGGER.warning("No user message found in chat log, this shouldn't happen")
 
     return messages
 
