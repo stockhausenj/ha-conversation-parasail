@@ -17,12 +17,5 @@ PARASAIL_API_BASE = "https://api.parasail.ai/v1"
 
 # Available Parasail models
 PARASAIL_MODELS = [
-    "parasail-llama-33-70b-fp8",
-    "parasail-llama-4-scout-instruct",
-    "parasail-llama-4-maverick-instruct-fp8",
-    "parasail-qwen3-30b-a3b",
-    "parasail-qwen3-235b-a22b",
-    "parasail-qwen3-32b",
-    "parasail-gemma3-27b-it",
-    "parasail-mistral-devstral-small",
+    "meta-llama/Llama-3.3-70B-Instruct",
 ]
