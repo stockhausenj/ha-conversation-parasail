@@ -214,8 +214,8 @@ class ParasailConversationEntity(ConversationEntity):
                     function_name = tool_call.function.name
                     function_args_str = tool_call.function.arguments
 
-                    _LOGGER.debug(
-                        "Executing tool: %s with args: %s",
+                    _LOGGER.info(
+                        "LLM requested tool: %s with args: %s",
                         function_name,
                         function_args_str,
                     )
@@ -224,19 +224,25 @@ class ParasailConversationEntity(ConversationEntity):
                         # Parse arguments
                         function_args = json.loads(function_args_str)
 
-                        # Execute the tool via LLM API
-                        tool_input = llm.ToolInput(
-                            tool_name=function_name,
-                            tool_args=function_args,
-                        )
+                        # Check if LLM API is available
+                        if not chat_log.llm_api:
+                            _LOGGER.error("LLM API not available! Cannot execute tool %s", function_name)
+                            result_str = json.dumps({"error": "LLM API not configured"})
+                        else:
+                            # Execute the tool via LLM API
+                            tool_input = llm.ToolInput(
+                                tool_name=function_name,
+                                tool_args=function_args,
+                            )
 
-                        tool_result = await chat_log.llm_api.async_call_tool(tool_input)
-                        result_str = json.dumps(tool_result)
+                            _LOGGER.debug("Calling LLM API tool with input: %s", tool_input)
+                            tool_result = await chat_log.llm_api.async_call_tool(tool_input)
+                            result_str = json.dumps(tool_result)
 
-                        _LOGGER.debug("Tool result: %s", result_str)
+                            _LOGGER.info("Tool %s executed successfully. Result: %s", function_name, result_str)
 
                     except Exception as tool_err:
-                        _LOGGER.error("Error executing tool %s: %s", function_name, tool_err)
+                        _LOGGER.error("Error executing tool %s: %s", function_name, tool_err, exc_info=True)
                         result_str = json.dumps({"error": str(tool_err)})
 
                     # Add tool result to messages
