@@ -117,7 +117,15 @@ class ParasailConversationEntity(ConversationEntity):
                 _LOGGER.error("Error converting tools: %s", tool_err, exc_info=True)
 
         # Build messages from chat log
-        messages = _build_messages_from_chat_log(chat_log)
+        messages = _build_messages_from_chat_log(chat_log, user_input, custom_prompt)
+
+        # Ensure we have at least the user message
+        if not messages or not any(m.get("role") == "user" for m in messages):
+            _LOGGER.warning("No messages from chat log, creating basic message structure")
+            messages = [
+                {"role": "system", "content": custom_prompt},
+                {"role": "user", "content": user_input.text}
+            ]
 
         # Log the request for debugging
         _LOGGER.info("Sending %d messages to Parasail", len(messages))
@@ -256,7 +264,11 @@ class ParasailConversationEntity(ConversationEntity):
         )
 
 
-def _build_messages_from_chat_log(chat_log: ChatLog) -> list[ChatCompletionMessageParam]:
+def _build_messages_from_chat_log(
+    chat_log: ChatLog,
+    user_input: conversation.ConversationInput,
+    custom_prompt: str,
+) -> list[ChatCompletionMessageParam]:
     """Build OpenAI-format messages from chat log."""
     messages: list[ChatCompletionMessageParam] = []
 
@@ -267,6 +279,9 @@ def _build_messages_from_chat_log(chat_log: ChatLog) -> list[ChatCompletionMessa
         api_prompt = chat_log.llm_api.api_prompt
         if api_prompt:
             system_parts.append(api_prompt)
+    elif custom_prompt:
+        # If no LLM API, use custom prompt
+        system_parts.append(custom_prompt)
 
     if hasattr(chat_log, "extra_system_prompt") and chat_log.extra_system_prompt:
         system_parts.append(chat_log.extra_system_prompt)
@@ -277,8 +292,8 @@ def _build_messages_from_chat_log(chat_log: ChatLog) -> list[ChatCompletionMessa
             "content": "\n\n".join(system_parts),
         })
 
-    # Add conversation messages
-    if hasattr(chat_log, "messages"):
+    # Add conversation history (excluding current message which we'll add separately)
+    if hasattr(chat_log, "messages") and chat_log.messages:
         for msg in chat_log.messages:
             if hasattr(msg, "role") and hasattr(msg, "content") and msg.content:
                 if msg.role in ("user", "assistant"):
@@ -287,9 +302,11 @@ def _build_messages_from_chat_log(chat_log: ChatLog) -> list[ChatCompletionMessa
                         "content": msg.content,
                     })
 
-    # Ensure we have at least one message (the current user input should be there)
-    if not messages or not any(m.get("role") == "user" for m in messages):
-        _LOGGER.warning("No user message found in chat log, this shouldn't happen")
+    # Always add the current user input
+    messages.append({
+        "role": "user",
+        "content": user_input.text,
+    })
 
     return messages
 
