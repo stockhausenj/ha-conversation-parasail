@@ -11,6 +11,7 @@ from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import llm
 
 from .const import (
     CONF_API_KEY,
@@ -18,10 +19,13 @@ from .const import (
     CONF_TEMPERATURE,
     CONF_MAX_TOKENS,
     CONF_TOP_P,
+    CONF_LLM_HASS_API,
+    CONF_PROMPT,
     DEFAULT_MODEL,
     DEFAULT_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
     DEFAULT_TOP_P,
+    DEFAULT_PROMPT,
     DOMAIN,
     PARASAIL_API_BASE,
     PARASAIL_MODELS,
@@ -122,29 +126,40 @@ class OptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
+        # Get available LLM APIs
+        apis = await llm.async_get_apis(self.hass)
+        api_choices = {api.id: api.name for api in apis}
+
+        # Get current options, fallback to data if options not set
+        options = self.config_entry.options or self.config_entry.data
+
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
                     vol.Required(
                         CONF_MODEL,
-                        default=self.config_entry.data.get(CONF_MODEL, DEFAULT_MODEL),
+                        default=options.get(CONF_MODEL, DEFAULT_MODEL),
                     ): vol.In(PARASAIL_MODELS),
                     vol.Optional(
+                        CONF_LLM_HASS_API,
+                        description={"suggested_value": options.get(CONF_LLM_HASS_API, "assist")},
+                    ): vol.In(api_choices),
+                    vol.Optional(
+                        CONF_PROMPT,
+                        description={"suggested_value": options.get(CONF_PROMPT, DEFAULT_PROMPT)},
+                    ): str,
+                    vol.Optional(
                         CONF_TEMPERATURE,
-                        default=self.config_entry.data.get(
-                            CONF_TEMPERATURE, DEFAULT_TEMPERATURE
-                        ),
+                        default=options.get(CONF_TEMPERATURE, DEFAULT_TEMPERATURE),
                     ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=2.0)),
                     vol.Optional(
                         CONF_MAX_TOKENS,
-                        default=self.config_entry.data.get(
-                            CONF_MAX_TOKENS, DEFAULT_MAX_TOKENS
-                        ),
+                        default=options.get(CONF_MAX_TOKENS, DEFAULT_MAX_TOKENS),
                     ): vol.All(vol.Coerce(int), vol.Range(min=1, max=4096)),
                     vol.Optional(
                         CONF_TOP_P,
-                        default=self.config_entry.data.get(CONF_TOP_P, DEFAULT_TOP_P),
+                        default=options.get(CONF_TOP_P, DEFAULT_TOP_P),
                     ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
                 }
             ),

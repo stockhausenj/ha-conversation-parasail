@@ -35,12 +35,16 @@
         "description": "Update your Parasail conversation preferences.",
         "data": {
           "model": "Model",
+          "llm_hass_api": "Home Assistant API",
+          "prompt": "System Prompt",
           "temperature": "Temperature",
           "max_tokens": "Maximum Tokens",
           "top_p": "Top P"
         },
         "data_description": {
           "model": "The Parasail model to use for conversations",
+          "llm_hass_api": "API to provide device control tools (select 'Assist' for full control)",
+          "prompt": "Custom instructions for the AI assistant",
           "temperature": "Controls randomness (0.0-2.0). Lower is more focused.",
           "max_tokens": "Maximum length of the response (1-4096)",
           "top_p": "Nucleus sampling parameter (0.0-1.0)"
