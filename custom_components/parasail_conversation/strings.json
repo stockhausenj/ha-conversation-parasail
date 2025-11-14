@@ -1,0 +1,51 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure Parasail Conversation",
+        "description": "Enter your Parasail API credentials and model preferences.",
+        "data": {
+          "api_key": "API Key",
+          "model": "Model",
+          "temperature": "Temperature",
+          "max_tokens": "Maximum Tokens",
+          "top_p": "Top P"
+        },
+        "data_description": {
+          "api_key": "Your Parasail API key from https://www.parasail.io/",
+          "model": "The Parasail model to use for conversations",
+          "temperature": "Controls randomness (0.0-2.0). Lower is more focused.",
+          "max_tokens": "Maximum length of the response (1-4096)",
+          "top_p": "Nucleus sampling parameter (0.0-1.0)"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid API key. Please check your credentials.",
+      "unknown": "An unexpected error occurred. Please try again."
+    },
+    "abort": {
+      "already_configured": "This integration is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure Parasail Conversation",
+        "description": "Update your Parasail conversation preferences.",
+        "data": {
+          "model": "Model",
+          "temperature": "Temperature",
+          "max_tokens": "Maximum Tokens",
+          "top_p": "Top P"
+        },
+        "data_description": {
+          "model": "The Parasail model to use for conversations",
+          "temperature": "Controls randomness (0.0-2.0). Lower is more focused.",
+          "max_tokens": "Maximum length of the response (1-4096)",
+          "top_p": "Nucleus sampling parameter (0.0-1.0)"
+        }
+      }
+    }
+  }
+}
