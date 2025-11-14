@@ -10,7 +10,7 @@ CONF_TOP_P = "top_p"
 CONF_LLM_HASS_API = "llm_hass_api"
 CONF_PROMPT = "prompt"
 
-DEFAULT_MODEL = "parasail-qwen3-32b"
+DEFAULT_MODEL = "Qwen/Qwen3-235B-A22B-Instruct-2507"
 DEFAULT_TEMPERATURE = 0.7
 DEFAULT_MAX_TOKENS = 1000
 DEFAULT_TOP_P = 1.0
@@ -36,7 +36,8 @@ Keep responses concise and natural."""
 
 PARASAIL_API_BASE = "https://api.parasail.io/v1"
 
-# Available Parasail models
+# Available models (Parasail hosts HuggingFace models)
 PARASAIL_MODELS = [
+    "Qwen/Qwen3-235B-A22B-Instruct-2507",  # Optimal for function calling
     "meta-llama/Llama-3.3-70B-Instruct",
 ]
