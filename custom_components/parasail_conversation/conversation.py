@@ -10,6 +10,7 @@ from homeassistant.components import conversation
 from homeassistant.components.conversation import ConversationEntity, ConversationResult
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import intent
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
@@ -92,24 +93,25 @@ class ParasailConversationEntity(ConversationEntity):
 
             _LOGGER.debug("Parasail response: %s", response_text)
 
+            # Create intent response
+            intent_response = intent.IntentResponse(language=user_input.language)
+            intent_response.async_set_speech(response_text)
+
             return conversation.ConversationResult(
-                response=conversation.ConversationResponse(
-                    speech={"plain": {"speech": response_text}},
-                    response_type=conversation.ConversationResponseType.ACTION_DONE,
-                ),
+                response=intent_response,
                 conversation_id=user_input.conversation_id,
             )
 
         except Exception as err:
             _LOGGER.error("Error processing conversation: %s", err)
+
+            # Create error response
+            intent_response = intent.IntentResponse(language=user_input.language)
+            intent_response.async_set_speech(
+                f"Sorry, I encountered an error: {str(err)}"
+            )
+
             return conversation.ConversationResult(
-                response=conversation.ConversationResponse(
-                    speech={
-                        "plain": {
-                            "speech": f"Sorry, I encountered an error: {str(err)}"
-                        }
-                    },
-                    response_type=conversation.ConversationResponseType.ERROR,
-                ),
+                response=intent_response,
                 conversation_id=user_input.conversation_id,
             )
