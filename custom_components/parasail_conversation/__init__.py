@@ -23,10 +23,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(update_listener))
 
-    # Register custom climate intent handler
-    # Call it directly - async_register will overwrite any existing handler
-    await climate_intent.async_setup_intents(hass)
-    _LOGGER.info("Registered custom climate intent handler from async_setup_entry")
+    # Register custom climate intent handler after a delay to ensure climate component loads first
+    async def register_delayed():
+        """Register after a short delay to let climate component register first."""
+        import asyncio
+        await asyncio.sleep(2)  # Wait 2 seconds for climate to register
+        await climate_intent.async_setup_intents(hass)
+        _LOGGER.info("Registered custom climate intent handler (delayed)")
+
+    hass.async_create_task(register_delayed())
 
     return True
 
