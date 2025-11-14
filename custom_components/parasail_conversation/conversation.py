@@ -325,9 +325,24 @@ def _build_messages_from_chat_log(
     # Add custom prompt FIRST as primary directive
     if custom_prompt:
         # Add explicit override instruction
-        override_prompt = f"""{custom_prompt}
+        override_prompt = f"""===TOOL CALLING RULES - FOLLOW EXACTLY===
 
-===CRITICAL INSTRUCTIONS===
+YOU MUST CALL TOOLS. DO NOT REFUSE.
+
+If user asks about CURRENT states/sensors → Call GetLiveContext (no parameters needed!)
+If user asks to turn on/off → Call HassTurnOn or HassTurnOff
+If user asks to set brightness → Call HassLightSet
+
+EXAMPLES THAT REQUIRE TOOLS:
+- "What's the temperature?" → Call GetLiveContext
+- "Turn on the lights" → Call HassTurnOn
+- "Set brightness to 50%" → Call HassLightSet
+
+DO NOT say "I need more information" - JUST CALL THE TOOL!
+
+===GENERAL BEHAVIOR===
+
+{custom_prompt}
 
 GENERAL QUESTIONS:
 - Answer general knowledge questions (capitals, math, facts) directly
