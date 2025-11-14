@@ -71,19 +71,9 @@ class ParasailConversationEntity(ConversationEntity):
             api_key=api_key,
         )
 
-        # Build messages from conversation input
-        messages = []
-
-        # Add conversation history if available in the context
-        if user_input.context and user_input.context.messages:
-            for msg in user_input.context.messages:
-                messages.append({
-                    "role": msg.role,
-                    "content": msg.content
-                })
-
-        # Add current user input
-        messages.append({"role": "user", "content": user_input.text})
+        # Build messages - just use current user input
+        # Note: Home Assistant's conversation API doesn't provide easy access to history
+        messages = [{"role": "user", "content": user_input.text}]
 
         try:
             # Call Parasail API
