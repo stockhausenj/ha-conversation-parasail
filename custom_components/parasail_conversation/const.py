@@ -13,7 +13,7 @@ DEFAULT_TEMPERATURE = 0.7
 DEFAULT_MAX_TOKENS = 1000
 DEFAULT_TOP_P = 1.0
 
-PARASAIL_API_BASE = "https://api.parasail.ai/v1"
+PARASAIL_API_BASE = "https://api.parasail.io/v1"
 
 # Available Parasail models
 PARASAIL_MODELS = [
