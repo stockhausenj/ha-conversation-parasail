@@ -132,10 +132,11 @@ class OptionsFlow(config_entries.OptionsFlow):
 
         # Get available LLM APIs
         try:
-            apis = await llm.async_get_apis(self.hass)
+            apis = llm.async_get_apis(self.hass)
             api_choices = {api.id: api.name for api in apis}
+            _LOGGER.info("Found %d LLM APIs: %s", len(apis), list(api_choices.keys()))
         except Exception as err:
-            _LOGGER.warning("Could not get LLM APIs: %s, continuing without API selection", err)
+            _LOGGER.error("Could not get LLM APIs: %s, continuing without API selection", err, exc_info=True)
             api_choices = {}
 
         # Get current options, fallback to data if options not set
@@ -150,12 +151,19 @@ class OptionsFlow(config_entries.OptionsFlow):
             ): vol.In(PARASAIL_MODELS),
         }
 
-        # Only add LLM API selector if APIs are available
+        # Add LLM API selector - dropdown if APIs available, text field if not
         if api_choices:
+            _LOGGER.debug("Showing LLM API dropdown with choices: %s", api_choices)
             schema_dict[vol.Optional(
                 CONF_LLM_HASS_API,
                 description={"suggested_value": options.get(CONF_LLM_HASS_API, "assist")},
             )] = vol.In(api_choices)
+        else:
+            _LOGGER.warning("No LLM APIs found, showing text input (enter 'assist' for device control)")
+            schema_dict[vol.Optional(
+                CONF_LLM_HASS_API,
+                description={"suggested_value": options.get(CONF_LLM_HASS_API, "assist")},
+            )] = str
 
         # Add remaining options
         schema_dict.update({
