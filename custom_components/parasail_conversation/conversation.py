@@ -116,10 +116,15 @@ class ParasailConversationEntity(ConversationEntity):
         if chat_log.llm_api and chat_log.llm_api.tools:
             try:
                 tools = _convert_tools_to_openai_format(chat_log.llm_api.tools)
-                _LOGGER.info("Loaded %d tools for device control", len(tools))
+                tool_names = [t["function"]["name"] for t in tools]
+                _LOGGER.info("Loaded %d tools for device control: %s", len(tools), tool_names)
                 # Log first tool as sample
                 if tools:
                     _LOGGER.debug("Sample tool: %s", json.dumps(tools[0], indent=2))
+                # Log brightness control tool if it exists
+                brightness_tools = [t for t in tools if "light" in t["function"]["name"].lower() or "brightness" in t["function"]["name"].lower()]
+                if brightness_tools:
+                    _LOGGER.debug("Light control tool: %s", json.dumps(brightness_tools[0], indent=2))
             except Exception as tool_err:
                 _LOGGER.error("Error converting tools: %s", tool_err, exc_info=True)
 
