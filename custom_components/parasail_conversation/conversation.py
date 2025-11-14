@@ -235,19 +235,25 @@ def _build_messages_from_chat_log(chat_log: ChatLog) -> list[ChatCompletionMessa
     """Build OpenAI-format messages from chat log."""
     messages: list[ChatCompletionMessageParam] = []
 
-    # Add system prompt if available
-    if chat_log.system_content:
+    # Add system prompt
+    system_prompt = chat_log.get_system_prompt()
+    if system_prompt:
         messages.append({
             "role": "system",
-            "content": chat_log.system_content.content,
+            "content": system_prompt,
         })
 
-    # Add conversation history
-    for content in chat_log.contents:
-        if hasattr(content, "role") and hasattr(content, "content"):
+    # Add conversation messages
+    for msg in chat_log.messages:
+        if msg.role == "user":
             messages.append({
-                "role": content.role,
-                "content": content.content,
+                "role": "user",
+                "content": msg.content,
+            })
+        elif msg.role == "assistant":
+            messages.append({
+                "role": "assistant",
+                "content": msg.content,
             })
 
     return messages
