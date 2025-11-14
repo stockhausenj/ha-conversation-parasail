@@ -10,7 +10,11 @@ from openai.types.chat import ChatCompletionMessageParam
 from voluptuous_openapi import convert
 
 from homeassistant.components import conversation
-from homeassistant.components.conversation import ConversationEntity, ConversationResult
+from homeassistant.components.conversation import (
+    ConversationEntity,
+    ConversationEntityFeature,
+    ConversationResult,
+)
 from homeassistant.components.conversation.chat_log import ChatLog
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -57,6 +61,7 @@ class ParasailConversationEntity(ConversationEntity):
         self.entry = entry
         self._attr_name = f"Parasail ({entry.data.get(CONF_MODEL, DEFAULT_MODEL)})"
         self._attr_unique_id = entry.entry_id
+        self._attr_supported_features = ConversationEntityFeature.CONTROL
 
     @property
     def supported_languages(self) -> list[str] | Literal["*"]:
