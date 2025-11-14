@@ -125,6 +125,10 @@ class ParasailConversationEntity(ConversationEntity):
                 brightness_tools = [t for t in tools if "light" in t["function"]["name"].lower() or "brightness" in t["function"]["name"].lower()]
                 if brightness_tools:
                     _LOGGER.debug("Light control tool: %s", json.dumps(brightness_tools[0], indent=2))
+                # Log GetLiveContext tool
+                context_tools = [t for t in tools if "context" in t["function"]["name"].lower()]
+                if context_tools:
+                    _LOGGER.debug("GetLiveContext tool: %s", json.dumps(context_tools[0], indent=2))
             except Exception as tool_err:
                 _LOGGER.error("Error converting tools: %s", tool_err, exc_info=True)
 
@@ -315,18 +319,10 @@ def _build_messages_from_chat_log(
     """Build OpenAI-format messages from chat log."""
     messages: list[ChatCompletionMessageParam] = []
 
-    # Build system prompt - custom prompt LAST to override API restrictions
+    # Build system prompt - custom prompt FIRST as primary instructions
     system_parts = []
 
-    if chat_log.llm_api and hasattr(chat_log.llm_api, "api_prompt"):
-        api_prompt = chat_log.llm_api.api_prompt
-        if api_prompt:
-            system_parts.append(api_prompt)
-
-    if hasattr(chat_log, "extra_system_prompt") and chat_log.extra_system_prompt:
-        system_parts.append(chat_log.extra_system_prompt)
-
-    # Add custom prompt LAST so it takes priority over API restrictions
+    # Add custom prompt FIRST as primary directive
     if custom_prompt:
         # Add explicit override instruction
         override_prompt = f"""{custom_prompt}
@@ -348,17 +344,32 @@ When users request device control, YOU MUST call the appropriate tool:
    - "Set living room light to 50%" → Call HassLightSet with {{"area": "living room", "brightness": 50}}
    - "Make bedroom light blue" → Call HassLightSet with {{"area": "bedroom", "color": "blue"}}
 
-3. Check current states: Use GetLiveContext
+3. Check current states/sensors: Use GetLiveContext
    - "What's the temperature?" → Call GetLiveContext
+   - "What are the temperatures in the house?" → Call GetLiveContext
+   - "Is the door locked?" → Call GetLiveContext
+   - "What's the humidity?" → Call GetLiveContext
+   - "Are any lights on?" → Call GetLiveContext
+   GetLiveContext returns CURRENT sensor values and device states - use it for ANY status query!
 
 4. Climate control: Use HassClimateSetTemperature
 5. Media control: Use HassMediaPause, HassMediaUnpause, etc.
 
-DO NOT respond with "I need more information" for device control - just call the tool with available info!
+CRITICAL: When asked about current states (temperature, status, etc.), you MUST call GetLiveContext!
+DO NOT respond with "I need more information" - just call the appropriate tool!
 If you're unsure of exact device name, use area + domain.
 
 ===END INSTRUCTIONS==="""
         system_parts.append(override_prompt)
+
+    # Add API instructions AFTER our primary instructions
+    if chat_log.llm_api and hasattr(chat_log.llm_api, "api_prompt"):
+        api_prompt = chat_log.llm_api.api_prompt
+        if api_prompt:
+            system_parts.append(api_prompt)
+
+    if hasattr(chat_log, "extra_system_prompt") and chat_log.extra_system_prompt:
+        system_parts.append(chat_log.extra_system_prompt)
 
     if system_parts:
         full_prompt = "\n\n".join(system_parts)
