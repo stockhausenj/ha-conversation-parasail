@@ -83,10 +83,10 @@ class ParasailConversationEntity(ConversationEntity):
         # Provide LLM data to chat log (this loads tools and context)
         try:
             await chat_log.async_provide_llm_data(
-                llm_context=user_input.as_llm_context(DOMAIN),
-                apis=llm_api_id if llm_api_id else None,
-                prompt=custom_prompt,
-                extra_system_prompt=user_input.extra_system_prompt,
+                user_input.as_llm_context(DOMAIN),
+                llm_api_id if llm_api_id else None,
+                custom_prompt,
+                user_input.extra_system_prompt,
             )
         except Exception as err:
             _LOGGER.error("Error providing LLM data: %s", err)
