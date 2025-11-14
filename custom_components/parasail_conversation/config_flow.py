@@ -116,6 +116,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class OptionsFlow(config_entries.OptionsFlow):
     """Handle options flow for Parasail Conversation."""
 
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        super().__init__()
+        # Don't set self.config_entry - it's provided by the parent class
+        # This __init__ only exists to accept the config_entry parameter
+        # from async_get_options_flow which the parent will handle
+
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -124,43 +131,55 @@ class OptionsFlow(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         # Get available LLM APIs
-        apis = await llm.async_get_apis(self.hass)
-        api_choices = {api.id: api.name for api in apis}
+        try:
+            apis = await llm.async_get_apis(self.hass)
+            api_choices = {api.id: api.name for api in apis}
+        except Exception as err:
+            _LOGGER.warning("Could not get LLM APIs: %s, continuing without API selection", err)
+            api_choices = {}
 
         # Get current options, fallback to data if options not set
         config_entry = self.config_entry
         options = config_entry.options or config_entry.data
 
+        # Build data schema
+        schema_dict = {
+            vol.Required(
+                CONF_MODEL,
+                default=options.get(CONF_MODEL, DEFAULT_MODEL),
+            ): vol.In(PARASAIL_MODELS),
+        }
+
+        # Only add LLM API selector if APIs are available
+        if api_choices:
+            schema_dict[vol.Optional(
+                CONF_LLM_HASS_API,
+                description={"suggested_value": options.get(CONF_LLM_HASS_API, "assist")},
+            )] = vol.In(api_choices)
+
+        # Add remaining options
+        schema_dict.update({
+            vol.Optional(
+                CONF_PROMPT,
+                description={"suggested_value": options.get(CONF_PROMPT, DEFAULT_PROMPT)},
+            ): str,
+            vol.Optional(
+                CONF_TEMPERATURE,
+                default=options.get(CONF_TEMPERATURE, DEFAULT_TEMPERATURE),
+            ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=2.0)),
+            vol.Optional(
+                CONF_MAX_TOKENS,
+                default=options.get(CONF_MAX_TOKENS, DEFAULT_MAX_TOKENS),
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=4096)),
+            vol.Optional(
+                CONF_TOP_P,
+                default=options.get(CONF_TOP_P, DEFAULT_TOP_P),
+            ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
+        })
+
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_MODEL,
-                        default=options.get(CONF_MODEL, DEFAULT_MODEL),
-                    ): vol.In(PARASAIL_MODELS),
-                    vol.Optional(
-                        CONF_LLM_HASS_API,
-                        description={"suggested_value": options.get(CONF_LLM_HASS_API, "assist")},
-                    ): vol.In(api_choices),
-                    vol.Optional(
-                        CONF_PROMPT,
-                        description={"suggested_value": options.get(CONF_PROMPT, DEFAULT_PROMPT)},
-                    ): str,
-                    vol.Optional(
-                        CONF_TEMPERATURE,
-                        default=options.get(CONF_TEMPERATURE, DEFAULT_TEMPERATURE),
-                    ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=2.0)),
-                    vol.Optional(
-                        CONF_MAX_TOKENS,
-                        default=options.get(CONF_MAX_TOKENS, DEFAULT_MAX_TOKENS),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=4096)),
-                    vol.Optional(
-                        CONF_TOP_P,
-                        default=options.get(CONF_TOP_P, DEFAULT_TOP_P),
-                    ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
-                }
-            ),
+            data_schema=vol.Schema(schema_dict),
         )
 
 
