@@ -71,21 +71,16 @@ class ParasailConversationEntity(ConversationEntity):
             api_key=api_key,
         )
 
-        # Build conversation history
+        # Build messages from conversation input
         messages = []
 
-        # Add conversation history if available
-        if user_input.conversation_id and (
-            conversation_id := user_input.conversation_id
-        ):
-            if conversation_data := conversation.async_get_conversation(
-                self.hass, conversation_id
-            ):
-                for msg in conversation_data:
-                    if msg.role == "user":
-                        messages.append({"role": "user", "content": msg.content})
-                    elif msg.role == "assistant":
-                        messages.append({"role": "assistant", "content": msg.content})
+        # Add conversation history if available in the context
+        if user_input.context and user_input.context.messages:
+            for msg in user_input.context.messages:
+                messages.append({
+                    "role": msg.role,
+                    "content": msg.content
+                })
 
         # Add current user input
         messages.append({"role": "user", "content": user_input.text})
