@@ -229,6 +229,9 @@ class ParasailConversationEntity(ConversationEntity):
                     try:
                         # Parse arguments
                         function_args = json.loads(function_args_str)
+                        _LOGGER.debug("Parsed tool args: %s (types: %s)",
+                                     function_args,
+                                     {k: type(v).__name__ for k, v in function_args.items()})
 
                         # Check if LLM API is available
                         if not chat_log.llm_api:
@@ -249,7 +252,15 @@ class ParasailConversationEntity(ConversationEntity):
 
                     except Exception as tool_err:
                         _LOGGER.error("Error executing tool %s: %s", function_name, tool_err, exc_info=True)
-                        result_str = json.dumps({"error": str(tool_err)})
+                        # Provide helpful error message back to the LLM
+                        error_msg = str(tool_err)
+                        if "MatchFailedError" in error_msg:
+                            result_str = json.dumps({
+                                "error": "Could not find matching devices. Try being more specific with device names or call the tool separately for each area/device.",
+                                "details": error_msg
+                            })
+                        else:
+                            result_str = json.dumps({"error": error_msg})
 
                     # Add tool result to messages
                     messages.append({
