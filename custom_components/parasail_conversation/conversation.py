@@ -285,19 +285,26 @@ def _build_messages_from_chat_log(
     """Build OpenAI-format messages from chat log."""
     messages: list[ChatCompletionMessageParam] = []
 
-    # Build system prompt from LLM API prompt and extra system prompt
+    # Build system prompt - custom prompt LAST to override API restrictions
     system_parts = []
 
     if chat_log.llm_api and hasattr(chat_log.llm_api, "api_prompt"):
         api_prompt = chat_log.llm_api.api_prompt
         if api_prompt:
             system_parts.append(api_prompt)
-    elif custom_prompt:
-        # If no LLM API, use custom prompt
-        system_parts.append(custom_prompt)
 
     if hasattr(chat_log, "extra_system_prompt") and chat_log.extra_system_prompt:
         system_parts.append(chat_log.extra_system_prompt)
+
+    # Add custom prompt LAST so it takes priority over API restrictions
+    if custom_prompt:
+        # Add explicit override instruction
+        override_prompt = f"""{custom_prompt}
+
+IMPORTANT: You can answer ANY question, not just home automation questions.
+If asked about general knowledge (capitals, math, facts, etc.), answer directly.
+Do NOT refuse general knowledge questions."""
+        system_parts.append(override_prompt)
 
     if system_parts:
         messages.append({
