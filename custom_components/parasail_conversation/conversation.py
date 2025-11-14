@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
+from voluptuous_openapi import convert
 
 from homeassistant.components import conversation
 from homeassistant.components.conversation import ConversationEntity, ConversationResult
@@ -114,6 +115,10 @@ class ParasailConversationEntity(ConversationEntity):
         # Build messages from chat log
         messages = _build_messages_from_chat_log(chat_log)
 
+        # Log the request for debugging
+        _LOGGER.debug("Sending %d messages to Parasail", len(messages))
+        _LOGGER.debug("Messages: %s", messages)
+
         # Tool calling loop
         iteration = 0
         while iteration < MAX_TOOL_ITERATIONS:
@@ -153,9 +158,9 @@ class ParasailConversationEntity(ConversationEntity):
                     )
 
                 # Process tool calls
-                messages.append({
+                # Note: content can be None when there are tool calls
+                assistant_msg: dict[str, Any] = {
                     "role": "assistant",
-                    "content": assistant_message.content,
                     "tool_calls": [
                         {
                             "id": tool_call.id,
@@ -167,7 +172,13 @@ class ParasailConversationEntity(ConversationEntity):
                         }
                         for tool_call in assistant_message.tool_calls
                     ],
-                })
+                }
+
+                # Only add content if it's not None/empty
+                if assistant_message.content:
+                    assistant_msg["content"] = assistant_message.content
+
+                messages.append(assistant_msg)
 
                 # Execute each tool call
                 for tool_call in assistant_message.tool_calls:
@@ -268,8 +279,12 @@ def _convert_tools_to_openai_format(tools: list[llm.Tool]) -> list[dict[str, Any
     openai_tools = []
 
     for tool in tools:
-        # Convert voluptuous schema to JSON schema
-        parameters = _voluptuous_to_json_schema(tool.parameters)
+        try:
+            # Use voluptuous_openapi to convert schema
+            parameters = convert(tool.parameters, custom_serializer=llm.selector_serializer)
+        except Exception as err:
+            _LOGGER.warning("Error converting schema for tool %s: %s, using basic schema", tool.name, err)
+            parameters = {"type": "object", "properties": {}}
 
         openai_tools.append({
             "type": "function",
@@ -281,38 +296,3 @@ def _convert_tools_to_openai_format(tools: list[llm.Tool]) -> list[dict[str, Any
         })
 
     return openai_tools
-
-
-def _voluptuous_to_json_schema(schema: Any) -> dict[str, Any]:
-    """Convert voluptuous schema to JSON schema format."""
-    # Basic conversion - this handles simple schemas
-    # For more complex schemas, Home Assistant has serialization helpers
-
-    if not hasattr(schema, "schema"):
-        return {"type": "object", "properties": {}, "required": []}
-
-    properties = {}
-    required = []
-
-    schema_dict = schema.schema if hasattr(schema, "schema") else {}
-
-    for key, value in schema_dict.items():
-        # Extract the actual key name
-        if hasattr(key, "schema"):
-            key_name = key.schema
-            is_required = hasattr(key, "marker") and key.marker is not None
-        else:
-            key_name = str(key)
-            is_required = False
-
-        # Basic type mapping
-        properties[key_name] = {"type": "string"}  # Default to string
-
-        if is_required:
-            required.append(key_name)
-
-    return {
-        "type": "object",
-        "properties": properties,
-        "required": required,
-    }
