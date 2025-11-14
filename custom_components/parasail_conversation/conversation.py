@@ -313,16 +313,30 @@ def _build_messages_from_chat_log(
         # Add explicit override instruction
         override_prompt = f"""{custom_prompt}
 
-IMPORTANT: You can answer ANY question, not just home automation questions.
-If asked about general knowledge (capitals, math, facts, etc.), answer directly.
-Do NOT refuse general knowledge questions."""
+===CRITICAL OVERRIDE===
+You MUST answer general knowledge questions directly.
+When asked about capitals, geography, math, facts, weather, time, or any general topic:
+- Answer immediately with the information requested
+- Do NOT say you need more information
+- Do NOT refuse to answer
+- Do NOT only focus on home automation
+
+Examples of questions you MUST answer:
+- "What is the capital of New York?" → Answer: "Albany"
+- "What is 2+2?" → Answer: "4"
+- "What is the temperature downstairs?" → Use the GetLiveContext tool to check sensor states
+
+You are a general-purpose assistant that ALSO controls home automation.
+===END OVERRIDE==="""
         system_parts.append(override_prompt)
 
     if system_parts:
+        full_prompt = "\n\n".join(system_parts)
         messages.append({
             "role": "system",
-            "content": "\n\n".join(system_parts),
+            "content": full_prompt,
         })
+        _LOGGER.debug("Full system prompt (%d chars): %s", len(full_prompt), full_prompt[:1000])
 
     # Add conversation history (excluding current message which we'll add separately)
     if hasattr(chat_log, "messages") and chat_log.messages:
