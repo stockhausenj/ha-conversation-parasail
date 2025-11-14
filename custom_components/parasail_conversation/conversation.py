@@ -173,6 +173,12 @@ class ParasailConversationEntity(ConversationEntity):
 
                 assistant_message = response.choices[0].message
 
+                _LOGGER.info(
+                    "Parasail response: content='%s', has_tool_calls=%s",
+                    assistant_message.content,
+                    bool(assistant_message.tool_calls),
+                )
+
                 # Check if we're done (no tool calls)
                 if not assistant_message.tool_calls:
                     # Extract final response text
@@ -253,6 +259,12 @@ class ParasailConversationEntity(ConversationEntity):
                     })
 
                 # Continue loop to get next response from LLM
+                _LOGGER.info(
+                    "Completed %d tool calls, continuing conversation (iteration %d/%d)",
+                    len(assistant_message.tool_calls),
+                    iteration,
+                    MAX_TOOL_ITERATIONS,
+                )
 
             except Exception as err:
                 _LOGGER.error("Error during conversation processing: %s", err)
