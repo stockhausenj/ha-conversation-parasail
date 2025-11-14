@@ -98,10 +98,12 @@ class ParasailConversationEntity(ConversationEntity):
         else:
             _LOGGER.info("No LLM API configured, running without device control tools")
 
-        # Create OpenAI client
-        client = OpenAI(
-            base_url=PARASAIL_API_BASE,
-            api_key=api_key,
+        # Create OpenAI client (in executor to avoid blocking SSL operations)
+        client = await self.hass.async_add_executor_job(
+            lambda: OpenAI(
+                base_url=PARASAIL_API_BASE,
+                api_key=api_key,
+            )
         )
 
         # Convert tools to OpenAI format

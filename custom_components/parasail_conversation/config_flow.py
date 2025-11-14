@@ -39,20 +39,21 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
-    client = OpenAI(
-        base_url=PARASAIL_API_BASE,
-        api_key=data[CONF_API_KEY],
-    )
+    def _test_connection():
+        """Test connection to Parasail API."""
+        client = OpenAI(
+            base_url=PARASAIL_API_BASE,
+            api_key=data[CONF_API_KEY],
+        )
+        return client.chat.completions.create(
+            model=data.get(CONF_MODEL, DEFAULT_MODEL),
+            messages=[{"role": "user", "content": "Hi"}],
+            max_tokens=10,
+        )
 
     try:
         # Test the API key with a simple completion
-        await hass.async_add_executor_job(
-            lambda: client.chat.completions.create(
-                model=data.get(CONF_MODEL, DEFAULT_MODEL),
-                messages=[{"role": "user", "content": "Hi"}],
-                max_tokens=10,
-            )
-        )
+        await hass.async_add_executor_job(_test_connection)
     except Exception as err:
         _LOGGER.error("Failed to connect to Parasail API: %s", err)
         raise InvalidAuth from err
