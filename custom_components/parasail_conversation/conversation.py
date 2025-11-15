@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
@@ -140,8 +140,8 @@ class ParasailConversationEntity(ConversationEntity):
         if not messages or not any(m.get("role") == "user" for m in messages):
             _LOGGER.warning("No messages from chat log, creating basic message structure")
             messages = [
-                {"role": "system", "content": custom_prompt},
-                {"role": "user", "content": user_input.text}
+                cast(ChatCompletionMessageParam, {"role": "system", "content": custom_prompt}),
+                cast(ChatCompletionMessageParam, {"role": "user", "content": user_input.text})
             ]
 
         # Log the request for debugging
@@ -204,7 +204,7 @@ class ParasailConversationEntity(ConversationEntity):
 
                 # Process tool calls
                 # Note: content can be None when there are tool calls
-                assistant_msg: dict[str, Any] = {
+                assistant_msg = {
                     "role": "assistant",
                     "tool_calls": [
                         {
@@ -223,7 +223,7 @@ class ParasailConversationEntity(ConversationEntity):
                 if assistant_message.content:
                     assistant_msg["content"] = assistant_message.content
 
-                messages.append(assistant_msg)
+                messages.append(cast(ChatCompletionMessageParam, assistant_msg))
 
                 # Execute each tool call
                 for tool_call in assistant_message.tool_calls:
@@ -275,11 +275,11 @@ class ParasailConversationEntity(ConversationEntity):
                             result_str = json.dumps({"error": error_msg})
 
                     # Add tool result to messages
-                    messages.append({
+                    messages.append(cast(ChatCompletionMessageParam, {
                         "role": "tool",
                         "tool_call_id": tool_call.id,
                         "content": result_str,
-                    })
+                    }))
 
                 # Continue loop to get next response from LLM
                 _LOGGER.info(
@@ -394,27 +394,28 @@ If you're unsure of exact device name, use area + domain.
 
     if system_parts:
         full_prompt = "\n\n".join(system_parts)
-        messages.append({
+        messages.append(cast(ChatCompletionMessageParam, {
             "role": "system",
             "content": full_prompt,
-        })
+        }))
         _LOGGER.debug("Full system prompt (%d chars): %s", len(full_prompt), full_prompt[:1000])
 
     # Add conversation history (excluding current message which we'll add separately)
-    if hasattr(chat_log, "messages") and chat_log.messages:
-        for msg in chat_log.messages:
+    chat_messages = getattr(chat_log, "messages", None)
+    if chat_messages:
+        for msg in chat_messages:
             if hasattr(msg, "role") and hasattr(msg, "content") and msg.content:
                 if msg.role in ("user", "assistant"):
-                    messages.append({
+                    messages.append(cast(ChatCompletionMessageParam, {
                         "role": msg.role,
                         "content": msg.content,
-                    })
+                    }))
 
     # Always add the current user input
-    messages.append({
+    messages.append(cast(ChatCompletionMessageParam, {
         "role": "user",
         "content": user_input.text,
-    })
+    }))
 
     return messages
 

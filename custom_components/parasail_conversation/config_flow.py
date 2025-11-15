@@ -9,7 +9,6 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import llm
 
@@ -68,7 +67,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ):
         """Handle the initial step."""
         errors: dict[str, str] = {}
 
@@ -125,7 +124,7 @@ class OptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ):
         """Manage the options."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
@@ -144,29 +143,23 @@ class OptionsFlow(config_entries.OptionsFlow):
         options = config_entry.options or config_entry.data
 
         # Build data schema
+        # Add LLM API selector - dropdown if APIs available, text field if not
+        if api_choices:
+            _LOGGER.debug("Showing LLM API dropdown with choices: %s", api_choices)
+            llm_api_field = vol.In(api_choices)
+        else:
+            _LOGGER.warning("No LLM APIs found, showing text input (enter 'assist' for device control)")
+            llm_api_field = str
+
         schema_dict = {
             vol.Required(
                 CONF_MODEL,
                 default=options.get(CONF_MODEL, DEFAULT_MODEL),
             ): vol.In(PARASAIL_MODELS),
-        }
-
-        # Add LLM API selector - dropdown if APIs available, text field if not
-        if api_choices:
-            _LOGGER.debug("Showing LLM API dropdown with choices: %s", api_choices)
-            schema_dict[vol.Optional(
+            vol.Optional(
                 CONF_LLM_HASS_API,
                 description={"suggested_value": options.get(CONF_LLM_HASS_API, "assist")},
-            )] = vol.In(api_choices)
-        else:
-            _LOGGER.warning("No LLM APIs found, showing text input (enter 'assist' for device control)")
-            schema_dict[vol.Optional(
-                CONF_LLM_HASS_API,
-                description={"suggested_value": options.get(CONF_LLM_HASS_API, "assist")},
-            )] = str
-
-        # Add remaining options
-        schema_dict.update({
+            ): llm_api_field,
             vol.Optional(
                 CONF_PROMPT,
                 description={"suggested_value": options.get(CONF_PROMPT, DEFAULT_PROMPT)},
@@ -183,7 +176,7 @@ class OptionsFlow(config_entries.OptionsFlow):
                 CONF_TOP_P,
                 default=options.get(CONF_TOP_P, DEFAULT_TOP_P),
             ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
-        })
+        }
 
         return self.async_show_form(
             step_id="init",

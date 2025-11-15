@@ -4,9 +4,7 @@ from __future__ import annotations
 import logging
 import voluptuous as vol
 
-from homeassistant.components.climate import (
-    ATTR_HVAC_MODE,
-    ATTR_TEMPERATURE,
+from homeassistant.components.climate.const import (
     ATTR_TARGET_TEMP_HIGH,
     ATTR_TARGET_TEMP_LOW,
     DOMAIN as CLIMATE_DOMAIN,
@@ -14,7 +12,7 @@ from homeassistant.components.climate import (
     ClimateEntityFeature,
     HVACMode,
 )
-from homeassistant.const import ATTR_ENTITY_ID
+from homeassistant.const import ATTR_ENTITY_ID, ATTR_TEMPERATURE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv, intent
 
@@ -56,17 +54,21 @@ class SetTemperatureIntent(intent.IntentHandler):
         "For auto mode thermostats, use target_temp_low for heating and target_temp_high for cooling. "
         "For single-mode thermostats, use temperature."
     )
-    slot_schema = {
-        vol.Optional("temperature"): vol.Coerce(float),
-        vol.Optional("target_temp_low"): vol.Coerce(float),
-        vol.Optional("target_temp_high"): vol.Coerce(float),
-        vol.Optional("area"): intent.non_empty_string,
-        vol.Optional("name"): intent.non_empty_string,
-        vol.Optional("floor"): intent.non_empty_string,
-        vol.Optional("preferred_area_id"): cv.string,
-        vol.Optional("preferred_floor_id"): cv.string,
-    }
     platforms = {CLIMATE_DOMAIN}
+
+    @property
+    def slot_schema(self):
+        """Return the slot schema."""
+        return {
+            vol.Optional("temperature"): vol.Coerce(float),
+            vol.Optional("target_temp_low"): vol.Coerce(float),
+            vol.Optional("target_temp_high"): vol.Coerce(float),
+            vol.Optional("area"): intent.non_empty_string,
+            vol.Optional("name"): intent.non_empty_string,
+            vol.Optional("floor"): intent.non_empty_string,
+            vol.Optional("preferred_area_id"): cv.string,
+            vol.Optional("preferred_floor_id"): cv.string,
+        }
 
     async def async_handle(self, intent_obj: intent.Intent) -> intent.IntentResponse:
         """Handle the intent."""
@@ -81,7 +83,7 @@ class SetTemperatureIntent(intent.IntentHandler):
 
         # Validate we have at least one temperature parameter
         if not any([temperature, target_temp_low, target_temp_high]):
-            raise vol.error.MultipleInvalid("Must provide at least one temperature parameter")
+            raise intent.IntentHandleError("Must provide at least one temperature parameter")
 
         name: str | None = None
         if "name" in slots:
@@ -156,7 +158,7 @@ class SetTemperatureIntent(intent.IntentHandler):
                 temperature,
             )
         else:
-            raise vol.error.MultipleInvalid(
+            raise intent.IntentHandleError(
                 "Must provide both target_temp_low and target_temp_high together, or provide temperature"
             )
 
