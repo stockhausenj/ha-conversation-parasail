@@ -1,12 +1,13 @@
 {
   "domain": "parasail_conversation",
   "name": "Parasail Conversation",
-  "codeowners": ["@jaystockhausen"],
+  "codeowners": ["@stockhausenj"],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/jaystockhausen/ha-conversation-parasail",
+  "documentation": "https://github.com/stockhausenj/ha-conversation-parasail",
   "integration_type": "service",
   "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/stockhausenj/ha-conversation-parasail/issues",
   "requirements": ["openai>=1.40.0"],
   "version": "1.0.0"
 }
