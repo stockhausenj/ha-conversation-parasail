@@ -1,0 +1,25 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="#346DDB" opacity="0.1"/>
+
+  <!-- Letter P -->
+  <path d="M 140 120 L 140 390 L 190 390 L 190 270 L 290 270 C 350 270 390 240 390 180 C 390 120 350 120 290 120 Z M 190 165 L 280 165 C 320 165 340 175 340 190 C 340 205 320 225 280 225 L 190 225 Z" fill="#346DDB"/>
+
+  <!-- Microphone icon with background circle -->
+  <g transform="translate(340, 300)">
+    <!-- Small background circle for mic -->
+    <circle cx="30" cy="40" r="45" fill="#346DDB" opacity="0.15"/>
+
+    <!-- Mic body -->
+    <rect x="20" y="20" width="20" height="40" rx="10" fill="#346DDB"/>
+
+    <!-- Mic stand -->
+    <path d="M 30 60 L 30 75 M 18 75 L 42 75" stroke="#346DDB" stroke-width="3" fill="none" stroke-linecap="round"/>
+
+    <!-- Sound waves -->
+    <path d="M 8 35 Q 5 40, 8 45" stroke="#346DDB" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+    <path d="M 52 35 Q 55 40, 52 45" stroke="#346DDB" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+    <path d="M 3 32 Q 0 40, 3 48" stroke="#346DDB" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.5"/>
+    <path d="M 57 32 Q 60 40, 57 48" stroke="#346DDB" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.5"/>
+  </g>
+</svg>
