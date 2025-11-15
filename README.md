@@ -14,16 +14,9 @@ A Home Assistant custom component that integrates [Parasail](https://www.parasai
 
 ### HACS (Recommended)
 
-1. Open HACS in your Home Assistant instance
-2. Click on "Integrations"
-3. Click the three dots in the top right corner
-4. Select "Custom repositories"
-5. Add this repository URL: `https://github.com/jaystockhausen/ha-conversation-parasail`
-6. Select category: "Integration"
-7. Click "Add"
-8. Search for "Parasail Conversation" in HACS
-9. Click "Download"
-10. Restart Home Assistant
+1. Add this repository as a custom repository in HACS (category: Integration)
+2. Search for "Parasail Conversation" and install
+3. Restart Home Assistant
 
 ### Manual Installation
 
