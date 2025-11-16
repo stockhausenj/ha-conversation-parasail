@@ -69,6 +69,65 @@ class ParasailConversationEntity(ConversationEntity):
         """Return a list of supported languages."""
         return "*"
 
+    async def _async_announce_message(self, message: str) -> dict[str, Any]:
+        """Announce a TTS message on Sonos speakers using media_player.play_media."""
+        if not message:
+            return {"error": "No message provided"}
+
+        # Find all Sonos media players using entity registry
+        from homeassistant.helpers import entity_registry as er
+
+        entity_reg = er.async_get(self.hass)
+        sonos_players = []
+
+        for state in self.hass.states.async_all("media_player"):
+            entity_id = state.entity_id
+            entity_entry = entity_reg.async_get(entity_id)
+
+            # Check if this media player is from the Sonos integration
+            if entity_entry and entity_entry.platform == "sonos":
+                sonos_players.append(entity_id)
+                _LOGGER.debug("Found Sonos speaker: %s (platform: %s)", entity_id, entity_entry.platform)
+
+        if not sonos_players:
+            _LOGGER.warning("No Sonos speakers found")
+            return {"error": "No Sonos speakers found", "success": False}
+
+        _LOGGER.info("Found %d Sonos speakers: %s", len(sonos_players), sonos_players)
+
+        # Use media_player.play_media with Piper TTS
+        # Format: media-source://tts/tts.piper?message=<message>
+        media_content_id = f"media-source://tts/tts.piper?message={message}"
+
+        success_count = 0
+        failed = []
+
+        for player in sonos_players:
+            try:
+                await self.hass.services.async_call(
+                    "media_player",
+                    "play_media",
+                    {
+                        "entity_id": player,
+                        "media_content_id": media_content_id,
+                        "media_content_type": "music",
+                    },
+                    blocking=True,
+                )
+                success_count += 1
+                _LOGGER.info("Successfully announced on %s", player)
+            except Exception as err:
+                _LOGGER.error("Failed to announce on %s: %s", player, err)
+                failed.append(player)
+
+        return {
+            "success": success_count > 0,
+            "message": f"Announced on {success_count} of {len(sonos_players)} Sonos speakers",
+            "targets": len(sonos_players),
+            "success_count": success_count,
+            "failed": failed
+        }
+
     async def _async_handle_message(
         self, user_input: conversation.ConversationInput, chat_log: ChatLog
     ) -> ConversationResult:
@@ -117,6 +176,27 @@ class ParasailConversationEntity(ConversationEntity):
         if chat_log.llm_api and chat_log.llm_api.tools:
             try:
                 tools = _convert_tools_to_openai_format(chat_log.llm_api.tools)
+
+                # Add custom tool for TTS announcements on Sonos speakers
+                announce_tool = {
+                    "type": "function",
+                    "function": {
+                        "name": "AnnounceMessage",
+                        "description": "Announces a text-to-speech message on Sonos speakers",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "The message to announce via text-to-speech"
+                                }
+                            },
+                            "required": ["message"]
+                        }
+                    }
+                }
+                tools.append(announce_tool)
+
                 tool_names = [t["function"]["name"] for t in tools]
                 _LOGGER.info("Loaded %d tools for device control: %s", len(tools), tool_names)
                 # Log first tool as sample
@@ -245,8 +325,16 @@ class ParasailConversationEntity(ConversationEntity):
                         function_args = fix_llm_tool_args(function_args)
                         _LOGGER.info("Cleaned tool args: %s", function_args)
 
+                        # Handle custom AnnounceMessage tool
+                        if function_name == "AnnounceMessage":
+                            _LOGGER.info("Executing custom AnnounceMessage tool")
+                            result = await self._async_announce_message(
+                                message=function_args.get("message")
+                            )
+                            result_str = json.dumps(result)
+                            _LOGGER.info("AnnounceMessage result: %s", result_str)
                         # Check if LLM API is available
-                        if not chat_log.llm_api:
+                        elif not chat_log.llm_api:
                             _LOGGER.error("LLM API not available! Cannot execute tool %s", function_name)
                             result_str = json.dumps({"error": "LLM API not configured"})
                         else:
@@ -375,6 +463,13 @@ When users request device control, YOU MUST call the appropriate tool:
    DO NOT make two separate calls - combine them into a single call with both parameters.
 
 5. Media control: Use HassMediaPause, HassMediaUnpause, etc.
+
+6. TTS Announcements on Sonos speakers: Use AnnounceMessage
+   - "Announce that dinner is ready" → Call AnnounceMessage with {{"message": "Dinner is ready"}}
+   - "Broadcast test message" → Call AnnounceMessage with {{"message": "test message"}}
+   - "Say hello on the speakers" → Call AnnounceMessage with {{"message": "hello"}}
+   IMPORTANT: AnnounceMessage plays text-to-speech announcements on all Sonos speakers in the home.
+   Use this when the user asks to announce, broadcast, or say something on speakers.
 
 CRITICAL: When asked about current states (temperature, status, etc.), you MUST call GetLiveContext!
 DO NOT respond with "I need more information" - just call the appropriate tool!
