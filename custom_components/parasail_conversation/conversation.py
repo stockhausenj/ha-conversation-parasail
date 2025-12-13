@@ -140,9 +140,6 @@ class ParasailConversationEntity(ConversationEntity):
         try:
             from urllib.parse import quote
             import aiohttp
-            import re
-            from datetime import datetime
-            import pytz
 
             url = f"https://api.search.brave.com/res/v1/web/search?q={quote(query)}"
 
@@ -163,56 +160,8 @@ class ParasailConversationEntity(ConversationEntity):
 
                     data = await response.json()
 
-            # Get timezone for conversion
-            local_tz = pytz.timezone(self.hass.config.time_zone)
-
-            def convert_utc_times_in_text(text: str) -> str:
-                """Convert UTC times in text to local timezone."""
-                # Pattern to match times like "21:25 UTC", "9:25 PM UTC", "21:25", etc.
-                # This will match various time formats that might indicate UTC
-                patterns = [
-                    (r'(\d{1,2}):(\d{2})\s*(?:UTC|GMT)', 'HH:MM UTC/GMT'),  # 21:25 UTC
-                    (r'(\d{1,2}):(\d{2})\s*([AP]M)\s*(?:UTC|GMT)', 'HH:MM AM/PM UTC/GMT'),  # 9:25 PM UTC
-                ]
-
-                converted_text = text
-                for pattern, desc in patterns:
-                    matches = re.finditer(pattern, text, re.IGNORECASE)
-                    for match in matches:
-                        try:
-                            if len(match.groups()) == 2:  # HH:MM format
-                                hour, minute = int(match.group(1)), int(match.group(2))
-                                # Create UTC datetime for today
-                                utc_time = datetime.now(pytz.UTC).replace(hour=hour, minute=minute, second=0, microsecond=0)
-                            elif len(match.groups()) == 3:  # HH:MM AM/PM format
-                                hour, minute, ampm = int(match.group(1)), int(match.group(2)), match.group(3).upper()
-                                if ampm == 'PM' and hour != 12:
-                                    hour += 12
-                                elif ampm == 'AM' and hour == 12:
-                                    hour = 0
-                                utc_time = datetime.now(pytz.UTC).replace(hour=hour, minute=minute, second=0, microsecond=0)
-                            else:
-                                continue
-
-                            # Convert to local timezone
-                            local_time = utc_time.astimezone(local_tz)
-
-                            # Format as readable time
-                            local_time_str = local_time.strftime("%I:%M %p").lstrip('0')
-
-                            # Get timezone abbreviation (ET, PT, etc.)
-                            tz_abbr = local_time.strftime("%Z")
-
-                            # Replace in text
-                            original = match.group(0)
-                            replacement = f"{local_time_str} {tz_abbr}"
-                            converted_text = converted_text.replace(original, replacement, 1)
-                            _LOGGER.info(f"Converted time: {original} -> {replacement}")
-                        except Exception as e:
-                            _LOGGER.warning(f"Failed to convert time {match.group(0)}: {e}")
-                            continue
-
-                return converted_text
+            # Log raw search results for debugging
+            _LOGGER.info("Brave Search raw results for query '%s': %s", query, json.dumps(data, indent=2)[:5000])
 
             # Format results similar to the TypeScript version
             results = []
@@ -220,23 +169,25 @@ class ParasailConversationEntity(ConversationEntity):
             # Web results
             if data.get("web", {}).get("results"):
                 results.append("# Web Results\n")
-                for result in data["web"]["results"][:10]:
-                    title = convert_utc_times_in_text(result.get('title', 'No title'))
-                    description = convert_utc_times_in_text(result.get('description', ''))
-                    results.append(f"## {title}")
+                for result in data["web"]["results"][:15]:  # Increased from 10 to 15
+                    results.append(f"## {result.get('title', 'No title')}")
                     results.append(f"URL: {result.get('url', '')}")
-                    results.append(f"{description}\n")
+                    results.append(f"{result.get('description', '')}")
+                    # Include extra snippets if available
+                    if result.get("extra_snippets"):
+                        for snippet in result["extra_snippets"][:3]:  # Up to 3 extra snippets
+                            results.append(f"- {snippet}")
+                    results.append("")  # Empty line between results
 
             # News results
             if data.get("news", {}).get("results"):
                 results.append("\n# News Results\n")
-                for result in data["news"]["results"][:5]:
-                    title = convert_utc_times_in_text(result.get('title', 'No title'))
-                    description = convert_utc_times_in_text(result.get('description', ''))
-                    results.append(f"## {title}")
+                for result in data["news"]["results"][:10]:  # Increased from 5 to 10
+                    results.append(f"## {result.get('title', 'No title')}")
                     results.append(f"URL: {result.get('url', '')}")
-                    results.append(f"{description}")
-                    results.append(f"Published: {result.get('age', 'Unknown')}\n")
+                    results.append(f"{result.get('description', '')}")
+                    results.append(f"Published: {result.get('age', 'Unknown')}")
+                    results.append("")  # Empty line between results
 
             formatted_results = "\n".join(results) if results else "No results found"
 
@@ -498,7 +449,8 @@ IMPORTANT TIMEZONE INFORMATION:
                                 brave_api_key=brave_api_key
                             )
                             result_str = json.dumps(result)
-                            _LOGGER.info("WebSearch result: %s", result_str[:500])
+                            _LOGGER.info("WebSearch result (first 500 chars): %s", result_str[:500])
+                            _LOGGER.info("WebSearch full results being sent to model: %s", result.get("results", "")[:5000])
                         # Check if LLM API is available
                         elif not chat_log.llm_api:
                             _LOGGER.error("LLM API not available! Cannot execute tool %s", function_name)
