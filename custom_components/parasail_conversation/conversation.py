@@ -182,6 +182,13 @@ class ParasailConversationEntity(ConversationEntity):
 
             formatted_results = "\n".join(results) if results else "No results found"
 
+            # Get timezone from hass config for the reminder
+            timezone = self.hass.config.time_zone
+
+            # Add timezone reminder to results
+            timezone_reminder = f"\n\n⚠️ TIMEZONE REMINDER: If these results contain times, they may be in UTC or other timezones. You MUST convert all times to {timezone} before reporting to the user. Do NOT just change the timezone label - actually convert the time value."
+            formatted_results += timezone_reminder
+
             return {
                 "success": True,
                 "query": query,
@@ -265,11 +272,13 @@ class ParasailConversationEntity(ConversationEntity):
                 # Add custom tool for web search (if Brave API key is configured)
                 brave_api_key = options.get(CONF_BRAVE_API_KEY) or self.entry.data.get(CONF_BRAVE_API_KEY)
                 if brave_api_key:
+                    # Include timezone in WebSearch description
+                    search_description = f"Search the web for current information, news, documentation, or any information not in your training data. Returns relevant web pages and news articles. Use this when you need up-to-date information or answers to specific questions. IMPORTANT: When search results contain times, they may be in UTC or other timezones - you MUST convert all times to {timezone} before reporting to the user."
                     web_search_tool = {
                         "type": "function",
                         "function": {
                             "name": "WebSearch",
-                            "description": "Search the web for current information, news, documentation, or any information not in your training data. Returns relevant web pages and news articles. Use this when you need up-to-date information or answers to specific questions.",
+                            "description": search_description,
                             "parameters": {
                                 "type": "object",
                                 "properties": {
@@ -515,9 +524,26 @@ def _build_messages_from_chat_log(
     # Build system prompt - custom prompt FIRST as primary instructions
     system_parts = []
 
-    # Add timezone information if available
+    # Add timezone information if available - MUST be first and most prominent
     if timezone:
-        timezone_info = f"===TIMEZONE INFORMATION===\nThe user's timezone is: {timezone}\nALL times you mention MUST be in {timezone} timezone.\nWhen interpreting times from tools or search results, convert them to {timezone}.\n"
+        timezone_info = f"""===CRITICAL TIMEZONE REQUIREMENT - READ THIS FIRST===
+
+YOUR TIMEZONE: {timezone}
+
+MANDATORY RULES FOR ALL TIME REFERENCES:
+1. When you see times from web searches or tools, they may be in UTC or other timezones
+2. You MUST interpret and report ALL times in {timezone}
+3. If a web search shows a game at "21:25 UTC" or "9:25 PM UTC", convert it to {timezone}
+4. NEVER report times in UTC, GMT, or any other timezone - ONLY {timezone}
+5. When mentioning times, always include the timezone abbreviation (e.g., "4:25 PM ET" for Eastern Time)
+
+COMMON CONVERSIONS TO {timezone}:
+- If you see UTC times, convert them properly to {timezone}
+- If you see times without timezone, assume they are already in {timezone}
+- Double-check all time conversions before responding
+
+===END TIMEZONE REQUIREMENT===
+"""
         system_parts.append(timezone_info)
 
     # Add custom prompt FIRST as primary directive
