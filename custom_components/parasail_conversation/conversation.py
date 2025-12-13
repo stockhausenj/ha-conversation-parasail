@@ -524,29 +524,7 @@ def _build_messages_from_chat_log(
     # Build system prompt - custom prompt FIRST as primary instructions
     system_parts = []
 
-    # Add timezone information if available - MUST be first and most prominent
-    if timezone:
-        timezone_info = f"""===CRITICAL TIMEZONE REQUIREMENT - READ THIS FIRST===
-
-YOUR TIMEZONE: {timezone}
-
-MANDATORY RULES FOR ALL TIME REFERENCES:
-1. When you see times from web searches or tools, they may be in UTC or other timezones
-2. You MUST interpret and report ALL times in {timezone}
-3. If a web search shows a game at "21:25 UTC" or "9:25 PM UTC", convert it to {timezone}
-4. NEVER report times in UTC, GMT, or any other timezone - ONLY {timezone}
-5. When mentioning times, always include the timezone abbreviation (e.g., "4:25 PM ET" for Eastern Time)
-
-COMMON CONVERSIONS TO {timezone}:
-- If you see UTC times, convert them properly to {timezone}
-- If you see times without timezone, assume they are already in {timezone}
-- Double-check all time conversions before responding
-
-===END TIMEZONE REQUIREMENT===
-"""
-        system_parts.append(timezone_info)
-
-    # Add custom prompt FIRST as primary directive
+    # Add custom prompt FIRST as primary directive (tool calling must come before timezone)
     if custom_prompt:
         # Add explicit override instruction
         override_prompt = f"""===TOOL CALLING RULES - FOLLOW EXACTLY===
@@ -612,6 +590,22 @@ If you're unsure of exact device name, use area + domain.
 
 ===END INSTRUCTIONS==="""
         system_parts.append(override_prompt)
+
+    # Add timezone information AFTER tool calling rules but before API instructions
+    if timezone:
+        timezone_info = f"""===TIMEZONE REQUIREMENT===
+
+YOUR TIMEZONE: {timezone}
+
+IMPORTANT: When you receive times from WebSearch or other tools:
+1. Times may be in UTC or other timezones - convert them to {timezone}
+2. NEVER report times in UTC, GMT, or other timezones - ONLY {timezone}
+3. If a web search shows "21:25 UTC", convert it properly to {timezone} (don't just change the label)
+4. When mentioning times, include the timezone abbreviation (e.g., "4:25 PM ET")
+
+===END TIMEZONE REQUIREMENT===
+"""
+        system_parts.append(timezone_info)
 
     # Add API instructions AFTER our primary instructions
     if chat_log.llm_api and hasattr(chat_log.llm_api, "api_prompt"):
