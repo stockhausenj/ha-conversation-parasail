@@ -171,13 +171,13 @@ class ParasailConversationEntity(ConversationEntity):
             "America/Los_Angeles": "PT",
         }.get(target_timezone, "Local")
 
-        # Pattern to match times like "4:25 PM ET", "9:25PM", "12:30 p.m. CT", "7:20 p.m. (CT)", etc.
-        # Captures: hour, minute, AM/PM, optional timezone (with or without parentheses)
-        time_pattern = r'\b(\d{1,2}):(\d{2})\s*([AaPp]\.?[Mm]\.?)\s*(?:\(?\s*(ET|EST|EDT|CT|CST|CDT|MT|MST|MDT|PT|PST|PDT)\s*\)?)?\b'
+        # Pattern to match times like "4:25 PM ET", "9:25PM", "1 p.m. CT", "7:20 p.m. (CT)", "8 PM", etc.
+        # Captures: hour, optional minute, AM/PM, optional timezone (with or without parentheses)
+        time_pattern = r'\b(\d{1,2})(?::(\d{2}))?\s*([AaPp]\.?[Mm]\.?)\s*(?:\(?\s*(ET|EST|EDT|CT|CST|CDT|MT|MST|MDT|PT|PST|PDT)\s*\)?)?\b'
 
         def replace_time(match):
             hour = int(match.group(1))
-            minute = int(match.group(2))
+            minute = int(match.group(2)) if match.group(2) else 0  # Default to 0 if no minutes
             ampm = match.group(3).upper().replace(".", "")
             source_tz_abbrev = match.group(4)  # May be None
 
@@ -293,6 +293,26 @@ class ParasailConversationEntity(ConversationEntity):
 
             # Format results similar to the TypeScript version
             results = []
+
+            # Infobox (structured data - teams, events, etc.) - Most relevant first!
+            if data.get("infobox"):
+                infobox = data["infobox"]
+                results.append("# Quick Answer\n")
+                if infobox.get("title"):
+                    results.append(f"## {infobox['title']}")
+                if infobox.get("description"):
+                    results.append(f"{infobox['description']}")
+
+                # Add attributes (like "Next Game: ...", "Record: ...", etc.)
+                if infobox.get("attributes"):
+                    results.append("")  # Blank line before attributes
+                    for attr in infobox["attributes"]:
+                        title = attr.get("title", "")
+                        value = attr.get("value", "")
+                        if title and value:
+                            results.append(f"**{title}**: {value}")
+
+                results.append("")  # Empty line after infobox
 
             # Web results
             if data.get("web", {}).get("results"):
