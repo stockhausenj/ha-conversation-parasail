@@ -224,11 +224,16 @@ class ParasailConversationEntity(ConversationEntity):
         timezone = self.hass.config.time_zone
         custom_prompt = f"""{custom_prompt}
 
-IMPORTANT TIMEZONE INFORMATION:
+CRITICAL TIMEZONE RULES - READ CAREFULLY:
 - Your timezone is: {timezone}
-- When WebSearch returns times, they may be in UTC - convert them to {timezone}
-- Always report times in {timezone}, not UTC or other timezones
-- Don't just change the label (e.g., "UTC" to "ET") - actually convert the time value"""
+- WebSearch often returns times in UTC WITHOUT labeling them as UTC
+- ASSUME unlabeled times from WebSearch are UTC and MUST be converted to {timezone}
+- Example: If you see "9:25 PM" from a search result, it's likely 9:25 PM UTC (21:25 UTC)
+  - 9:25 PM UTC = 21:25 UTC = 4:25 PM {timezone} (subtract 5 hours for Eastern)
+  - NEVER report "9:25 PM" - convert it to the correct {timezone} time
+- ALWAYS do the math: subtract hours from UTC to get {timezone} time
+- ALWAYS include timezone abbreviation (ET, EST, EDT, etc.) when reporting times
+- Double-check your timezone conversion before responding"""
 
         # Provide LLM data to chat log (this loads tools and context)
         # Only if LLM API is configured
