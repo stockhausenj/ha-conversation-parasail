@@ -1,9 +1,13 @@
 """Conversation support for Parasail."""
+
 from __future__ import annotations
 
 import json
 import logging
+import re
+from datetime import datetime
 from typing import Any, Literal, cast
+from zoneinfo import ZoneInfo
 
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
@@ -88,7 +92,11 @@ class ParasailConversationEntity(ConversationEntity):
             # Check if this media player is from the Sonos integration
             if entity_entry and entity_entry.platform == "sonos":
                 sonos_players.append(entity_id)
-                _LOGGER.debug("Found Sonos speaker: %s (platform: %s)", entity_id, entity_entry.platform)
+                _LOGGER.debug(
+                    "Found Sonos speaker: %s (platform: %s)",
+                    entity_id,
+                    entity_entry.platform,
+                )
 
         if not sonos_players:
             _LOGGER.warning("No Sonos speakers found")
@@ -126,8 +134,115 @@ class ParasailConversationEntity(ConversationEntity):
             "message": f"Announced on {success_count} of {len(sonos_players)} Sonos speakers",
             "targets": len(sonos_players),
             "success_count": success_count,
-            "failed": failed
+            "failed": failed,
         }
+
+    def _convert_times_to_local(self, text: str, target_timezone: str) -> str:
+        """Convert all times in text to the target timezone.
+
+        Handles:
+        - Times with US timezone labels (ET, CT, MT, PT, EST, EDT, etc.)
+        - Unlabeled times (assumes UTC)
+        - Various time formats (12:30 PM, 12:30PM, 12:30 p.m., etc.)
+        """
+        conversions_made = []
+
+        # Timezone abbreviation mappings
+        tz_map = {
+            "ET": "America/New_York",
+            "EST": "America/New_York",
+            "EDT": "America/New_York",
+            "CT": "America/Chicago",
+            "CST": "America/Chicago",
+            "CDT": "America/Chicago",
+            "MT": "America/Denver",
+            "MST": "America/Denver",
+            "MDT": "America/Denver",
+            "PT": "America/Los_Angeles",
+            "PST": "America/Los_Angeles",
+            "PDT": "America/Los_Angeles",
+        }
+
+        # Get target timezone abbreviation for display
+        target_tz_abbrev = {
+            "America/New_York": "ET",
+            "America/Chicago": "CT",
+            "America/Denver": "MT",
+            "America/Los_Angeles": "PT",
+        }.get(target_timezone, "Local")
+
+        # Pattern to match times like "4:25 PM ET", "9:25PM", "12:30 p.m. CT", etc.
+        # Captures: hour, minute, AM/PM, optional timezone
+        time_pattern = r'\b(\d{1,2}):(\d{2})\s*([AaPp]\.?[Mm]\.?)\s*(?:(ET|EST|EDT|CT|CST|CDT|MT|MST|MDT|PT|PST|PDT))?\b'
+
+        def replace_time(match):
+            hour = int(match.group(1))
+            minute = int(match.group(2))
+            ampm = match.group(3).upper().replace(".", "")
+            source_tz_abbrev = match.group(4)  # May be None
+
+            # Convert to 24-hour format
+            if "PM" in ampm and hour != 12:
+                hour += 12
+            elif "AM" in ampm and hour == 12:
+                hour = 0
+
+            # Determine source timezone
+            if source_tz_abbrev:
+                source_tz_name = tz_map.get(source_tz_abbrev)
+            else:
+                # Unlabeled time - assume UTC
+                source_tz_name = "UTC"
+
+            if not source_tz_name:
+                return match.group(0)  # Return unchanged if unknown timezone
+
+            try:
+                # Create datetime in source timezone (use a fixed date)
+                # We only care about the time conversion, not the date
+                now = datetime.now(ZoneInfo(source_tz_name))
+                source_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+                # Convert to target timezone
+                target_time = source_time.astimezone(ZoneInfo(target_timezone))
+
+                # Format in 12-hour format
+                target_hour = target_time.hour
+                target_minute = target_time.minute
+                target_ampm = "AM"
+
+                if target_hour >= 12:
+                    target_ampm = "PM"
+                    if target_hour > 12:
+                        target_hour -= 12
+                elif target_hour == 0:
+                    target_hour = 12
+
+                # Log the conversion
+                original = match.group(0)
+                converted = f"{target_hour}:{target_minute:02d} {target_ampm} {target_tz_abbrev}"
+                conversions_made.append(f"{original} → {converted}")
+
+                # Return converted time with target timezone abbreviation
+                return converted
+
+            except Exception as err:
+                _LOGGER.warning("Failed to convert time %s: %s", match.group(0), err)
+                return match.group(0)  # Return unchanged on error
+
+        # Replace all times in the text
+        converted_text = re.sub(time_pattern, replace_time, text)
+
+        # Log all conversions made
+        if conversions_made:
+            _LOGGER.info(
+                "Converted %d time(s) to %s: %s",
+                len(conversions_made),
+                target_timezone,
+                ", ".join(conversions_made),
+            )
+
+        return converted_text
 
     async def _async_web_search(self, query: str, brave_api_key: str) -> dict[str, Any]:
         """Search the web using Brave Search API."""
@@ -135,7 +250,9 @@ class ParasailConversationEntity(ConversationEntity):
             return {"error": "No query provided"}
 
         if not brave_api_key:
-            return {"error": "Brave API key not configured. Please add it in integration settings."}
+            return {
+                "error": "Brave API key not configured. Please add it in integration settings."
+            }
 
         try:
             from urllib.parse import quote
@@ -155,13 +272,24 @@ class ParasailConversationEntity(ConversationEntity):
                 ) as response:
                     if response.status != 200:
                         error_text = await response.text()
-                        _LOGGER.error("Brave Search API error: %s %s - %s", response.status, response.reason, error_text)
-                        return {"error": f"Search API error: {response.status} {response.reason}"}
+                        _LOGGER.error(
+                            "Brave Search API error: %s %s - %s",
+                            response.status,
+                            response.reason,
+                            error_text,
+                        )
+                        return {
+                            "error": f"Search API error: {response.status} {response.reason}"
+                        }
 
                     data = await response.json()
 
             # Log raw search results for debugging
-            _LOGGER.info("Brave Search raw results for query '%s': %s", query, json.dumps(data, indent=2)[:5000])
+            _LOGGER.info(
+                "Brave Search raw results for query '%s': %s",
+                query,
+                json.dumps(data, indent=2)[:5000],
+            )
 
             # Format results similar to the TypeScript version
             results = []
@@ -175,7 +303,9 @@ class ParasailConversationEntity(ConversationEntity):
                     results.append(f"{result.get('description', '')}")
                     # Include extra snippets if available
                     if result.get("extra_snippets"):
-                        for snippet in result["extra_snippets"][:3]:  # Up to 3 extra snippets
+                        for snippet in result["extra_snippets"][
+                            :3
+                        ]:  # Up to 3 extra snippets
                             results.append(f"- {snippet}")
                     results.append("")  # Empty line between results
 
@@ -191,11 +321,16 @@ class ParasailConversationEntity(ConversationEntity):
 
             formatted_results = "\n".join(results) if results else "No results found"
 
+            # Convert all times to user's local timezone
+            user_timezone = self.hass.config.time_zone
+            formatted_results = self._convert_times_to_local(formatted_results, user_timezone)
+
             return {
                 "success": True,
                 "query": query,
                 "results": formatted_results,
-                "result_count": len(data.get("web", {}).get("results", [])) + len(data.get("news", {}).get("results", []))
+                "result_count": len(data.get("web", {}).get("results", []))
+                + len(data.get("news", {}).get("results", [])),
             }
 
         except Exception as err:
@@ -224,16 +359,7 @@ class ParasailConversationEntity(ConversationEntity):
         timezone = self.hass.config.time_zone
         custom_prompt = f"""{custom_prompt}
 
-CRITICAL TIMEZONE RULES - READ CAREFULLY:
-- Your timezone is: {timezone}
-- WebSearch often returns times in UTC WITHOUT labeling them as UTC
-- ASSUME unlabeled times from WebSearch are UTC and MUST be converted to {timezone}
-- Example: If you see "9:25 PM" from a search result, it's likely 9:25 PM UTC (21:25 UTC)
-  - 9:25 PM UTC = 21:25 UTC = 4:25 PM {timezone} (subtract 5 hours for Eastern)
-  - NEVER report "9:25 PM" - convert it to the correct {timezone} time
-- ALWAYS do the math: subtract hours from UTC to get {timezone} time
-- ALWAYS include timezone abbreviation (ET, EST, EDT, etc.) when reporting times
-- Double-check your timezone conversion before responding"""
+Note: Times in search results have been automatically converted to your local timezone ({timezone})."""
 
         # Provide LLM data to chat log (this loads tools and context)
         # Only if LLM API is configured
@@ -277,17 +403,19 @@ CRITICAL TIMEZONE RULES - READ CAREFULLY:
                             "properties": {
                                 "message": {
                                     "type": "string",
-                                    "description": "The message to announce via text-to-speech"
+                                    "description": "The message to announce via text-to-speech",
                                 }
                             },
-                            "required": ["message"]
-                        }
-                    }
+                            "required": ["message"],
+                        },
+                    },
                 }
                 tools.append(announce_tool)
 
                 # Add custom tool for web search (if Brave API key is configured)
-                brave_api_key = options.get(CONF_BRAVE_API_KEY) or self.entry.data.get(CONF_BRAVE_API_KEY)
+                brave_api_key = options.get(CONF_BRAVE_API_KEY) or self.entry.data.get(
+                    CONF_BRAVE_API_KEY
+                )
                 if brave_api_key:
                     web_search_tool = {
                         "type": "function",
@@ -299,29 +427,44 @@ CRITICAL TIMEZONE RULES - READ CAREFULLY:
                                 "properties": {
                                     "query": {
                                         "type": "string",
-                                        "description": "The search query. Be specific and include relevant keywords (e.g., 'weather in San Francisco', 'latest SpaceX news')"
+                                        "description": "The search query. Be specific and include relevant keywords (e.g., 'weather in San Francisco', 'latest SpaceX news')",
                                     }
                                 },
-                                "required": ["query"]
-                            }
-                        }
+                                "required": ["query"],
+                            },
+                        },
                     }
                     tools.append(web_search_tool)
                     _LOGGER.info("Web search tool enabled with Brave API")
 
                 tool_names = [t["function"]["name"] for t in tools]
-                _LOGGER.info("Loaded %d tools for device control: %s", len(tools), tool_names)
+                _LOGGER.info(
+                    "Loaded %d tools for device control: %s", len(tools), tool_names
+                )
                 # Log first tool as sample
                 if tools:
                     _LOGGER.debug("Sample tool: %s", json.dumps(tools[0], indent=2))
                 # Log brightness control tool if it exists
-                brightness_tools = [t for t in tools if "light" in t["function"]["name"].lower() or "brightness" in t["function"]["name"].lower()]
+                brightness_tools = [
+                    t
+                    for t in tools
+                    if "light" in t["function"]["name"].lower()
+                    or "brightness" in t["function"]["name"].lower()
+                ]
                 if brightness_tools:
-                    _LOGGER.debug("Light control tool: %s", json.dumps(brightness_tools[0], indent=2))
+                    _LOGGER.debug(
+                        "Light control tool: %s",
+                        json.dumps(brightness_tools[0], indent=2),
+                    )
                 # Log GetLiveContext tool
-                context_tools = [t for t in tools if "context" in t["function"]["name"].lower()]
+                context_tools = [
+                    t for t in tools if "context" in t["function"]["name"].lower()
+                ]
                 if context_tools:
-                    _LOGGER.debug("GetLiveContext tool: %s", json.dumps(context_tools[0], indent=2))
+                    _LOGGER.debug(
+                        "GetLiveContext tool: %s",
+                        json.dumps(context_tools[0], indent=2),
+                    )
             except Exception as tool_err:
                 _LOGGER.error("Error converting tools: %s", tool_err, exc_info=True)
 
@@ -330,10 +473,18 @@ CRITICAL TIMEZONE RULES - READ CAREFULLY:
 
         # Ensure we have at least the user message
         if not messages or not any(m.get("role") == "user" for m in messages):
-            _LOGGER.warning("No messages from chat log, creating basic message structure")
+            _LOGGER.warning(
+                "No messages from chat log, creating basic message structure"
+            )
             messages = [
-                cast(ChatCompletionMessageParam, {"role": "system", "content": custom_prompt}),
-                cast(ChatCompletionMessageParam, {"role": "user", "content": user_input.text})
+                cast(
+                    ChatCompletionMessageParam,
+                    {"role": "system", "content": custom_prompt},
+                ),
+                cast(
+                    ChatCompletionMessageParam,
+                    {"role": "user", "content": user_input.text},
+                ),
             ]
 
         # Log the request for debugging
@@ -360,8 +511,12 @@ CRITICAL TIMEZONE RULES - READ CAREFULLY:
                     completion_args["tools"] = tools
                     completion_args["tool_choice"] = "auto"
 
-                _LOGGER.debug("Calling Parasail API with args: model=%s, num_messages=%d, num_tools=%s",
-                             model, len(messages), len(tools) if tools else 0)
+                _LOGGER.debug(
+                    "Calling Parasail API with args: model=%s, num_messages=%d, num_tools=%s",
+                    model,
+                    len(messages),
+                    len(tools) if tools else 0,
+                )
 
                 try:
                     response = await self.hass.async_add_executor_job(
@@ -369,8 +524,11 @@ CRITICAL TIMEZONE RULES - READ CAREFULLY:
                     )
                 except Exception as api_err:
                     _LOGGER.error("Parasail API error: %s", api_err, exc_info=True)
-                    _LOGGER.error("Request had %d messages, %d tools",
-                                 len(messages), len(tools) if tools else 0)
+                    _LOGGER.error(
+                        "Request had %d messages, %d tools",
+                        len(messages),
+                        len(tools) if tools else 0,
+                    )
                     raise
 
                 assistant_message = response.choices[0].message
@@ -384,9 +542,14 @@ CRITICAL TIMEZONE RULES - READ CAREFULLY:
                 # Check if we're done (no tool calls)
                 if not assistant_message.tool_calls:
                     # Extract final response text
-                    response_text = assistant_message.content or "I'm not sure how to respond to that."
+                    response_text = (
+                        assistant_message.content
+                        or "I'm not sure how to respond to that."
+                    )
 
-                    intent_response = intent.IntentResponse(language=user_input.language)
+                    intent_response = intent.IntentResponse(
+                        language=user_input.language
+                    )
                     intent_response.async_set_speech(response_text)
 
                     return conversation.ConversationResult(
@@ -448,17 +611,28 @@ CRITICAL TIMEZONE RULES - READ CAREFULLY:
                         # Handle custom WebSearch tool
                         elif function_name == "WebSearch":
                             _LOGGER.info("Executing custom WebSearch tool")
-                            brave_api_key = options.get(CONF_BRAVE_API_KEY) or self.entry.data.get(CONF_BRAVE_API_KEY)
+                            brave_api_key = options.get(
+                                CONF_BRAVE_API_KEY
+                            ) or self.entry.data.get(CONF_BRAVE_API_KEY)
                             result = await self._async_web_search(
                                 query=function_args.get("query"),
-                                brave_api_key=brave_api_key
+                                brave_api_key=brave_api_key,
                             )
                             result_str = json.dumps(result)
-                            _LOGGER.info("WebSearch result (first 500 chars): %s", result_str[:500])
-                            _LOGGER.info("WebSearch full results being sent to model: %s", result.get("results", "")[:5000])
+                            _LOGGER.info(
+                                "WebSearch result (first 500 chars): %s",
+                                result_str[:500],
+                            )
+                            _LOGGER.info(
+                                "WebSearch full results being sent to model: %s",
+                                result.get("results", "")[:5000],
+                            )
                         # Check if LLM API is available
                         elif not chat_log.llm_api:
-                            _LOGGER.error("LLM API not available! Cannot execute tool %s", function_name)
+                            _LOGGER.error(
+                                "LLM API not available! Cannot execute tool %s",
+                                function_name,
+                            )
                             result_str = json.dumps({"error": "LLM API not configured"})
                         else:
                             # Execute the tool via LLM API
@@ -467,30 +641,50 @@ CRITICAL TIMEZONE RULES - READ CAREFULLY:
                                 tool_args=function_args,
                             )
 
-                            _LOGGER.debug("Calling LLM API tool with input: %s", tool_input)
-                            tool_result = await chat_log.llm_api.async_call_tool(tool_input)
+                            _LOGGER.debug(
+                                "Calling LLM API tool with input: %s", tool_input
+                            )
+                            tool_result = await chat_log.llm_api.async_call_tool(
+                                tool_input
+                            )
                             result_str = json.dumps(tool_result)
 
-                            _LOGGER.info("Tool %s executed successfully. Result: %s", function_name, result_str)
+                            _LOGGER.info(
+                                "Tool %s executed successfully. Result: %s",
+                                function_name,
+                                result_str,
+                            )
 
                     except Exception as tool_err:
-                        _LOGGER.error("Error executing tool %s: %s", function_name, tool_err, exc_info=True)
+                        _LOGGER.error(
+                            "Error executing tool %s: %s",
+                            function_name,
+                            tool_err,
+                            exc_info=True,
+                        )
                         # Provide helpful error message back to the LLM
                         error_msg = str(tool_err)
                         if "MatchFailedError" in error_msg:
-                            result_str = json.dumps({
-                                "error": "Could not find matching devices. Try being more specific with device names or call the tool separately for each area/device.",
-                                "details": error_msg
-                            })
+                            result_str = json.dumps(
+                                {
+                                    "error": "Could not find matching devices. Try being more specific with device names or call the tool separately for each area/device.",
+                                    "details": error_msg,
+                                }
+                            )
                         else:
                             result_str = json.dumps({"error": error_msg})
 
                     # Add tool result to messages
-                    messages.append(cast(ChatCompletionMessageParam, {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": result_str,
-                    }))
+                    messages.append(
+                        cast(
+                            ChatCompletionMessageParam,
+                            {
+                                "role": "tool",
+                                "tool_call_id": tool_call.id,
+                                "content": result_str,
+                            },
+                        )
+                    )
 
                 # Continue loop to get next response from LLM
                 _LOGGER.info(
@@ -594,6 +788,12 @@ When users request device control, YOU MUST call the appropriate tool:
    IMPORTANT: AnnounceMessage plays text-to-speech announcements on all Sonos speakers in the home.
    Use this when the user asks to announce, broadcast, or say something on speakers.
 
+7. Web Search: Use WebSearch for current information, news, sports schedules, etc.
+   - "Who plays this weekend?" → Call WebSearch with {{"query": "team name schedule this weekend"}}
+   - "What time is the game?" → Call WebSearch with {{"query": "team vs team game time"}}
+
+   Note: Times in WebSearch results are automatically converted to the user's local timezone.
+
 CRITICAL: When asked about current states (temperature, status, etc.), you MUST call GetLiveContext!
 DO NOT respond with "I need more information" - just call the appropriate tool!
 If you're unsure of exact device name, use area + domain.
@@ -612,11 +812,18 @@ If you're unsure of exact device name, use area + domain.
 
     if system_parts:
         full_prompt = "\n\n".join(system_parts)
-        messages.append(cast(ChatCompletionMessageParam, {
-            "role": "system",
-            "content": full_prompt,
-        }))
-        _LOGGER.debug("Full system prompt (%d chars): %s", len(full_prompt), full_prompt[:1000])
+        messages.append(
+            cast(
+                ChatCompletionMessageParam,
+                {
+                    "role": "system",
+                    "content": full_prompt,
+                },
+            )
+        )
+        _LOGGER.debug(
+            "Full system prompt (%d chars): %s", len(full_prompt), full_prompt[:1000]
+        )
 
     # Add conversation history (excluding current message which we'll add separately)
     chat_messages = getattr(chat_log, "messages", None)
@@ -624,16 +831,26 @@ If you're unsure of exact device name, use area + domain.
         for msg in chat_messages:
             if hasattr(msg, "role") and hasattr(msg, "content") and msg.content:
                 if msg.role in ("user", "assistant"):
-                    messages.append(cast(ChatCompletionMessageParam, {
-                        "role": msg.role,
-                        "content": msg.content,
-                    }))
+                    messages.append(
+                        cast(
+                            ChatCompletionMessageParam,
+                            {
+                                "role": msg.role,
+                                "content": msg.content,
+                            },
+                        )
+                    )
 
     # Always add the current user input
-    messages.append(cast(ChatCompletionMessageParam, {
-        "role": "user",
-        "content": user_input.text,
-    }))
+    messages.append(
+        cast(
+            ChatCompletionMessageParam,
+            {
+                "role": "user",
+                "content": user_input.text,
+            },
+        )
+    )
 
     return messages
 
@@ -645,18 +862,26 @@ def _convert_tools_to_openai_format(tools: list[llm.Tool]) -> list[dict[str, Any
     for tool in tools:
         try:
             # Use voluptuous_openapi to convert schema
-            parameters = convert(tool.parameters, custom_serializer=llm.selector_serializer)
+            parameters = convert(
+                tool.parameters, custom_serializer=llm.selector_serializer
+            )
         except Exception as err:
-            _LOGGER.warning("Error converting schema for tool %s: %s, using basic schema", tool.name, err)
+            _LOGGER.warning(
+                "Error converting schema for tool %s: %s, using basic schema",
+                tool.name,
+                err,
+            )
             parameters = {"type": "object", "properties": {}}
 
-        openai_tools.append({
-            "type": "function",
-            "function": {
-                "name": tool.name,
-                "description": tool.description or tool.name,
-                "parameters": parameters,
-            },
-        })
+        openai_tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description or tool.name,
+                    "parameters": parameters,
+                },
+            }
+        )
 
     return openai_tools
