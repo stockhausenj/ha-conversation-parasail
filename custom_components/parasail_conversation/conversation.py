@@ -301,14 +301,19 @@ class ParasailConversationEntity(ConversationEntity):
             except Exception as tool_err:
                 _LOGGER.error("Error converting tools: %s", tool_err, exc_info=True)
 
-        # Build messages from chat log
-        messages = _build_messages_from_chat_log(chat_log, user_input, custom_prompt)
+        # Build messages from chat log (include timezone from Home Assistant config)
+        timezone = self.hass.config.time_zone
+        messages = _build_messages_from_chat_log(chat_log, user_input, custom_prompt, timezone)
 
         # Ensure we have at least the user message
         if not messages or not any(m.get("role") == "user" for m in messages):
             _LOGGER.warning("No messages from chat log, creating basic message structure")
+            # Include timezone in fallback system prompt
+            system_content = custom_prompt
+            if timezone:
+                system_content = f"The user's timezone is: {timezone}\nALL times you mention MUST be in {timezone} timezone.\n\n{custom_prompt}"
             messages = [
-                cast(ChatCompletionMessageParam, {"role": "system", "content": custom_prompt}),
+                cast(ChatCompletionMessageParam, {"role": "system", "content": system_content}),
                 cast(ChatCompletionMessageParam, {"role": "user", "content": user_input.text})
             ]
 
@@ -502,12 +507,18 @@ def _build_messages_from_chat_log(
     chat_log: ChatLog,
     user_input: conversation.ConversationInput,
     custom_prompt: str,
+    timezone: str | None = None,
 ) -> list[ChatCompletionMessageParam]:
     """Build OpenAI-format messages from chat log."""
     messages: list[ChatCompletionMessageParam] = []
 
     # Build system prompt - custom prompt FIRST as primary instructions
     system_parts = []
+
+    # Add timezone information if available
+    if timezone:
+        timezone_info = f"===TIMEZONE INFORMATION===\nThe user's timezone is: {timezone}\nALL times you mention MUST be in {timezone} timezone.\nWhen interpreting times from tools or search results, convert them to {timezone}.\n"
+        system_parts.append(timezone_info)
 
     # Add custom prompt FIRST as primary directive
     if custom_prompt:
