@@ -182,13 +182,6 @@ class ParasailConversationEntity(ConversationEntity):
 
             formatted_results = "\n".join(results) if results else "No results found"
 
-            # Get timezone from hass config for the reminder
-            timezone = self.hass.config.time_zone
-
-            # Add timezone reminder to results
-            timezone_reminder = f"\n\n⚠️ TIMEZONE REMINDER: If these results contain times, they may be in UTC or other timezones. You MUST convert all times to {timezone} before reporting to the user. Do NOT just change the timezone label - actually convert the time value."
-            formatted_results += timezone_reminder
-
             return {
                 "success": True,
                 "query": query,
@@ -217,6 +210,16 @@ class ParasailConversationEntity(ConversationEntity):
         # Get LLM API and prompt configuration
         llm_api_id = options.get(CONF_LLM_HASS_API)
         custom_prompt = options.get(CONF_PROMPT, DEFAULT_PROMPT)
+
+        # Add timezone context to prompt
+        timezone = self.hass.config.time_zone
+        custom_prompt = f"""{custom_prompt}
+
+IMPORTANT TIMEZONE INFORMATION:
+- Your timezone is: {timezone}
+- When WebSearch returns times, they may be in UTC - convert them to {timezone}
+- Always report times in {timezone}, not UTC or other timezones
+- Don't just change the label (e.g., "UTC" to "ET") - actually convert the time value"""
 
         # Provide LLM data to chat log (this loads tools and context)
         # Only if LLM API is configured
@@ -272,13 +275,11 @@ class ParasailConversationEntity(ConversationEntity):
                 # Add custom tool for web search (if Brave API key is configured)
                 brave_api_key = options.get(CONF_BRAVE_API_KEY) or self.entry.data.get(CONF_BRAVE_API_KEY)
                 if brave_api_key:
-                    # Include timezone in WebSearch description
-                    search_description = f"Search the web for current information, news, documentation, or any information not in your training data. Returns relevant web pages and news articles. Use this when you need up-to-date information or answers to specific questions. IMPORTANT: When search results contain times, they may be in UTC or other timezones - you MUST convert all times to {timezone} before reporting to the user."
                     web_search_tool = {
                         "type": "function",
                         "function": {
                             "name": "WebSearch",
-                            "description": search_description,
+                            "description": "Search the web for current information, news, documentation, or any information not in your training data. Returns relevant web pages and news articles. Use this when you need up-to-date information or answers to specific questions.",
                             "parameters": {
                                 "type": "object",
                                 "properties": {
@@ -310,19 +311,14 @@ class ParasailConversationEntity(ConversationEntity):
             except Exception as tool_err:
                 _LOGGER.error("Error converting tools: %s", tool_err, exc_info=True)
 
-        # Build messages from chat log (include timezone from Home Assistant config)
-        timezone = self.hass.config.time_zone
-        messages = _build_messages_from_chat_log(chat_log, user_input, custom_prompt, timezone)
+        # Build messages from chat log
+        messages = _build_messages_from_chat_log(chat_log, user_input, custom_prompt)
 
         # Ensure we have at least the user message
         if not messages or not any(m.get("role") == "user" for m in messages):
             _LOGGER.warning("No messages from chat log, creating basic message structure")
-            # Include timezone in fallback system prompt
-            system_content = custom_prompt
-            if timezone:
-                system_content = f"The user's timezone is: {timezone}\nALL times you mention MUST be in {timezone} timezone.\n\n{custom_prompt}"
             messages = [
-                cast(ChatCompletionMessageParam, {"role": "system", "content": system_content}),
+                cast(ChatCompletionMessageParam, {"role": "system", "content": custom_prompt}),
                 cast(ChatCompletionMessageParam, {"role": "user", "content": user_input.text})
             ]
 
@@ -516,7 +512,6 @@ def _build_messages_from_chat_log(
     chat_log: ChatLog,
     user_input: conversation.ConversationInput,
     custom_prompt: str,
-    timezone: str | None = None,
 ) -> list[ChatCompletionMessageParam]:
     """Build OpenAI-format messages from chat log."""
     messages: list[ChatCompletionMessageParam] = []
@@ -524,7 +519,7 @@ def _build_messages_from_chat_log(
     # Build system prompt - custom prompt FIRST as primary instructions
     system_parts = []
 
-    # Add custom prompt FIRST as primary directive (tool calling must come before timezone)
+    # Add custom prompt FIRST as primary directive
     if custom_prompt:
         # Add explicit override instruction
         override_prompt = f"""===TOOL CALLING RULES - FOLLOW EXACTLY===
@@ -590,22 +585,6 @@ If you're unsure of exact device name, use area + domain.
 
 ===END INSTRUCTIONS==="""
         system_parts.append(override_prompt)
-
-    # Add timezone information AFTER tool calling rules but before API instructions
-    if timezone:
-        timezone_info = f"""===TIMEZONE REQUIREMENT===
-
-YOUR TIMEZONE: {timezone}
-
-IMPORTANT: When you receive times from WebSearch or other tools:
-1. Times may be in UTC or other timezones - convert them to {timezone}
-2. NEVER report times in UTC, GMT, or other timezones - ONLY {timezone}
-3. If a web search shows "21:25 UTC", convert it properly to {timezone} (don't just change the label)
-4. When mentioning times, include the timezone abbreviation (e.g., "4:25 PM ET")
-
-===END TIMEZONE REQUIREMENT===
-"""
-        system_parts.append(timezone_info)
 
     # Add API instructions AFTER our primary instructions
     if chat_log.llm_api and hasattr(chat_log.llm_api, "api_prompt"):
