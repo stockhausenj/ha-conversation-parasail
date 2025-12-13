@@ -23,6 +23,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     CONF_API_KEY,
+    CONF_BRAVE_API_KEY,
     CONF_MODEL,
     CONF_TEMPERATURE,
     CONF_MAX_TOKENS,
@@ -128,6 +129,70 @@ class ParasailConversationEntity(ConversationEntity):
             "failed": failed
         }
 
+    async def _async_web_search(self, query: str, brave_api_key: str) -> dict[str, Any]:
+        """Search the web using Brave Search API."""
+        if not query:
+            return {"error": "No query provided"}
+
+        if not brave_api_key:
+            return {"error": "Brave API key not configured. Please add it in integration settings."}
+
+        try:
+            from urllib.parse import quote
+            import aiohttp
+
+            url = f"https://api.search.brave.com/res/v1/web/search?q={quote(query)}"
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    headers={
+                        "Accept": "application/json",
+                        "Accept-Encoding": "gzip",
+                        "X-Subscription-Token": brave_api_key,
+                    },
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        _LOGGER.error("Brave Search API error: %s %s - %s", response.status, response.reason, error_text)
+                        return {"error": f"Search API error: {response.status} {response.reason}"}
+
+                    data = await response.json()
+
+            # Format results similar to the TypeScript version
+            results = []
+
+            # Web results
+            if data.get("web", {}).get("results"):
+                results.append("# Web Results\n")
+                for result in data["web"]["results"][:10]:
+                    results.append(f"## {result.get('title', 'No title')}")
+                    results.append(f"URL: {result.get('url', '')}")
+                    results.append(f"{result.get('description', '')}\n")
+
+            # News results
+            if data.get("news", {}).get("results"):
+                results.append("\n# News Results\n")
+                for result in data["news"]["results"][:5]:
+                    results.append(f"## {result.get('title', 'No title')}")
+                    results.append(f"URL: {result.get('url', '')}")
+                    results.append(f"{result.get('description', '')}")
+                    results.append(f"Published: {result.get('age', 'Unknown')}\n")
+
+            formatted_results = "\n".join(results) if results else "No results found"
+
+            return {
+                "success": True,
+                "query": query,
+                "results": formatted_results,
+                "result_count": len(data.get("web", {}).get("results", [])) + len(data.get("news", {}).get("results", []))
+            }
+
+        except Exception as err:
+            _LOGGER.error("Error performing web search: %s", err, exc_info=True)
+            return {"error": f"Web search failed: {str(err)}"}
+
     async def _async_handle_message(
         self, user_input: conversation.ConversationInput, chat_log: ChatLog
     ) -> ConversationResult:
@@ -196,6 +261,29 @@ class ParasailConversationEntity(ConversationEntity):
                     }
                 }
                 tools.append(announce_tool)
+
+                # Add custom tool for web search (if Brave API key is configured)
+                brave_api_key = options.get(CONF_BRAVE_API_KEY) or self.entry.data.get(CONF_BRAVE_API_KEY)
+                if brave_api_key:
+                    web_search_tool = {
+                        "type": "function",
+                        "function": {
+                            "name": "WebSearch",
+                            "description": "Search the web for current information, news, documentation, or any information not in your training data. Returns relevant web pages and news articles. Use this when you need up-to-date information or answers to specific questions.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "query": {
+                                        "type": "string",
+                                        "description": "The search query. Be specific and include relevant keywords (e.g., 'weather in San Francisco', 'latest SpaceX news')"
+                                    }
+                                },
+                                "required": ["query"]
+                            }
+                        }
+                    }
+                    tools.append(web_search_tool)
+                    _LOGGER.info("Web search tool enabled with Brave API")
 
                 tool_names = [t["function"]["name"] for t in tools]
                 _LOGGER.info("Loaded %d tools for device control: %s", len(tools), tool_names)
@@ -333,6 +421,16 @@ class ParasailConversationEntity(ConversationEntity):
                             )
                             result_str = json.dumps(result)
                             _LOGGER.info("AnnounceMessage result: %s", result_str)
+                        # Handle custom WebSearch tool
+                        elif function_name == "WebSearch":
+                            _LOGGER.info("Executing custom WebSearch tool")
+                            brave_api_key = options.get(CONF_BRAVE_API_KEY) or self.entry.data.get(CONF_BRAVE_API_KEY)
+                            result = await self._async_web_search(
+                                query=function_args.get("query"),
+                                brave_api_key=brave_api_key
+                            )
+                            result_str = json.dumps(result)
+                            _LOGGER.info("WebSearch result: %s", result_str[:500])
                         # Check if LLM API is available
                         elif not chat_log.llm_api:
                             _LOGGER.error("LLM API not available! Cannot execute tool %s", function_name)

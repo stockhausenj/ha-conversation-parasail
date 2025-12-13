@@ -6,6 +6,7 @@
         "description": "Enter your Parasail API credentials and model preferences.",
         "data": {
           "api_key": "API Key",
+          "brave_api_key": "Brave API Key (Optional)",
           "model": "Model",
           "temperature": "Temperature",
           "max_tokens": "Maximum Tokens",
@@ -13,9 +14,10 @@
         },
         "data_description": {
           "api_key": "Your Parasail API key from https://www.parasail.io/",
+          "brave_api_key": "Brave Search API key for web search (get from https://brave.com/search/api/)",
           "model": "The Parasail model to use for conversations",
           "temperature": "Controls randomness (0.0-2.0). Lower is more focused.",
-          "max_tokens": "Maximum length of the response (1-4096)",
+          "max_tokens": "Maximum length of the response (1-100000)",
           "top_p": "Nucleus sampling parameter (0.0-1.0)"
         }
       }
@@ -36,6 +38,7 @@
         "data": {
           "model": "Model",
           "llm_hass_api": "Home Assistant API",
+          "brave_api_key": "Brave API Key (Optional)",
           "prompt": "System Prompt",
           "temperature": "Temperature",
           "max_tokens": "Maximum Tokens",
@@ -44,9 +47,10 @@
         "data_description": {
           "model": "The Parasail model to use for conversations",
           "llm_hass_api": "API to provide device control tools (select 'Assist' for full control)",
+          "brave_api_key": "Brave Search API key for web search (get from https://brave.com/search/api/)",
           "prompt": "Custom instructions for the AI assistant",
           "temperature": "Controls randomness (0.0-2.0). Lower is more focused.",
-          "max_tokens": "Maximum length of the response (1-4096)",
+          "max_tokens": "Maximum length of the response (1-100000)",
           "top_p": "Nucleus sampling parameter (0.0-1.0)"
         }
       }

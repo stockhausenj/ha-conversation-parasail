@@ -14,6 +14,7 @@ from homeassistant.helpers import llm
 
 from .const import (
     CONF_API_KEY,
+    CONF_BRAVE_API_KEY,
     CONF_MODEL,
     CONF_TEMPERATURE,
     CONF_MAX_TOKENS,
@@ -87,6 +88,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_API_KEY): str,
+                    vol.Optional(CONF_BRAVE_API_KEY): str,
                     vol.Required(CONF_MODEL, default=DEFAULT_MODEL): vol.In(
                         PARASAIL_MODELS
                     ),
@@ -94,7 +96,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         vol.Coerce(float), vol.Range(min=0.0, max=2.0)
                     ),
                     vol.Optional(CONF_MAX_TOKENS, default=DEFAULT_MAX_TOKENS): vol.All(
-                        vol.Coerce(int), vol.Range(min=1, max=4096)
+                        vol.Coerce(int), vol.Range(min=1, max=100000)
                     ),
                     vol.Optional(CONF_TOP_P, default=DEFAULT_TOP_P): vol.All(
                         vol.Coerce(float), vol.Range(min=0.0, max=1.0)
@@ -161,6 +163,10 @@ class OptionsFlow(config_entries.OptionsFlow):
                 description={"suggested_value": options.get(CONF_LLM_HASS_API, "assist")},
             ): llm_api_field,
             vol.Optional(
+                CONF_BRAVE_API_KEY,
+                description={"suggested_value": options.get(CONF_BRAVE_API_KEY, config_entry.data.get(CONF_BRAVE_API_KEY, ""))},
+            ): str,
+            vol.Optional(
                 CONF_PROMPT,
                 description={"suggested_value": options.get(CONF_PROMPT, DEFAULT_PROMPT)},
             ): str,
@@ -171,7 +177,7 @@ class OptionsFlow(config_entries.OptionsFlow):
             vol.Optional(
                 CONF_MAX_TOKENS,
                 default=options.get(CONF_MAX_TOKENS, DEFAULT_MAX_TOKENS),
-            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=4096)),
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=100000)),
             vol.Optional(
                 CONF_TOP_P,
                 default=options.get(CONF_TOP_P, DEFAULT_TOP_P),
