@@ -171,9 +171,9 @@ class ParasailConversationEntity(ConversationEntity):
             "America/Los_Angeles": "PT",
         }.get(target_timezone, "Local")
 
-        # Pattern to match times like "4:25 PM ET", "9:25PM", "12:30 p.m. CT", etc.
-        # Captures: hour, minute, AM/PM, optional timezone
-        time_pattern = r'\b(\d{1,2}):(\d{2})\s*([AaPp]\.?[Mm]\.?)\s*(?:(ET|EST|EDT|CT|CST|CDT|MT|MST|MDT|PT|PST|PDT))?\b'
+        # Pattern to match times like "4:25 PM ET", "9:25PM", "12:30 p.m. CT", "7:20 p.m. (CT)", etc.
+        # Captures: hour, minute, AM/PM, optional timezone (with or without parentheses)
+        time_pattern = r'\b(\d{1,2}):(\d{2})\s*([AaPp]\.?[Mm]\.?)\s*(?:\(?\s*(ET|EST|EDT|CT|CST|CDT|MT|MST|MDT|PT|PST|PDT)\s*\)?)?\b'
 
         def replace_time(match):
             hour = int(match.group(1))
