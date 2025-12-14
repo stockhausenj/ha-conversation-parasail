@@ -375,11 +375,34 @@ class ParasailConversationEntity(ConversationEntity):
         llm_api_id = options.get(CONF_LLM_HASS_API)
         custom_prompt = options.get(CONF_PROMPT, DEFAULT_PROMPT)
 
-        # Add timezone context to prompt
+        # Add timezone context and current date/time to prompt
         timezone = self.hass.config.time_zone
+
+        # Get current date and time in user's timezone
+        now = datetime.now(ZoneInfo(timezone))
+        current_date = now.strftime("%A, %B %d, %Y")  # e.g., "Friday, December 13, 2025"
+        current_time = now.strftime("%I:%M %p")  # e.g., "2:30 PM"
+        day_of_week = now.strftime("%A")  # e.g., "Friday"
+
         custom_prompt = f"""{custom_prompt}
 
-Note: Times in search results have been automatically converted to your local timezone ({timezone})."""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CURRENT DATE AND TIME
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Today is {current_date}
+Current time: {current_time}
+Day of week: {day_of_week}
+Timezone: {timezone}
+
+When the user says:
+- "today" → {current_date}
+- "this week" → the week containing {current_date}
+- "this weekend" → the Saturday and Sunday following {current_date} (or today/tomorrow if it's already the weekend)
+- "tonight" → evening of {current_date}
+
+Note: Times in search results have been automatically converted to your local timezone ({timezone}).
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
         # Provide LLM data to chat log (this loads tools and context)
         # Only if LLM API is configured
@@ -809,8 +832,11 @@ When users request device control, YOU MUST call the appropriate tool:
    Use this when the user asks to announce, broadcast, or say something on speakers.
 
 7. Web Search: Use WebSearch for current information, news, sports schedules, etc.
-   - "Who plays this weekend?" → Call WebSearch with {{"query": "team name schedule this weekend"}}
-   - "What time is the game?" → Call WebSearch with {{"query": "team vs team game time"}}
+   - "Who plays this weekend?" → Call WebSearch with {{"query": "team name game December 14 2025"}}
+   - "What time is the game today?" → Call WebSearch with {{"query": "team vs team game time December 13 2025"}}
+
+   IMPORTANT: When searching for time-sensitive information (games, events), include the specific date from the CURRENT DATE AND TIME section above.
+   "This weekend" or "today" means nothing to a search engine - convert to actual dates.
 
    Note: Times in WebSearch results are automatically converted to the user's local timezone.
 
